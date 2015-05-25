@@ -185,7 +185,7 @@ object Replicator {
    *
    * The optional `request` context is included in the reply messages. This is a convenient
    * way to pass contextual information (e.g. original sender) without having to use `ask`
-   * or local correlation data structures.
+   * or maintain local correlation data structures.
    */
   final case class Get(key: String, consistency: ReadConsistency, request: Option[Any] = None)
     extends Command with ReplicatorMessage {

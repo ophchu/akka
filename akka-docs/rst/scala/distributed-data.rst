@@ -31,7 +31,13 @@ with a specific role. It communicates with other ``Replicator`` instances with t
 (without address) that are running on other nodes . For convenience it can be used with the
 ``akka.cluster.ddata.DistributedData`` extension.
 
-FIXME introductionary code example
+Below is an example of an actor that schedules tick messages to itself and for each tick 
+adds or remove elements from a ``ORSet`` (observed-remove set). It also subscribes to
+changes of this. 
+
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#data-bot
+
+.. _replicator_update:
 
 Update
 ------
@@ -58,6 +64,8 @@ You supply a write consistency level which has the following meaning:
   (or cluster role group)
 * ``WriteAll`` the value will immediately be written to all nodes in the cluster
   (or all nodes in the cluster role group)
+  
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#update  
 
 As reply of the ``Update`` a ``Replicator.UpdateSuccess`` is sent to the sender of the
 ``Update`` if the value was successfully replicated according to the supplied consistency
@@ -66,26 +74,34 @@ sent back. Note that a ``Replicator.UpdateTimeout`` reply does not mean that the
 or was rolled back. It may still have been replicated to some nodes, and will eventually
 be replicated to all nodes with the gossip protocol.
 
-FIXME code example
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#update-response1
+
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#update-response2
 
 You will always see your own writes. For example if you send two ``Update`` messages
 changing the value of the same ``key``, the ``modify`` function of the second message will
 see the change that was performed by the first ``Update`` message.
 
 The ``Update`` message also supports a read consistency level with same meaning as described for
-``Get`` below. If the given read consistency level is not ``ReadLocal`` it will first retrieve the
-data from other nodes and then apply the ``modify`` function with the latest data.
+:ref:`replicator_get` below. If the given read consistency level is not ``ReadLocal`` it will first
+retrieve the data from other nodes and then apply the ``modify`` function with the latest data.
 If the read fails a ``Replicator.ReadFailure`` is replied to the sender of the ``Update``. In the
 case of ``ReadFailure`` the update is aborted and no data has been changed.
 To support "read your own writes" all incoming commands for this key will be
 buffered until the read is completed and the function has been applied.
 
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#read-update
+
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#read-update-response
+
 In the ``Update`` message you can pass an optional request context, which the ``Replicator``
 does not care about, but is included in the reply messages. This is a convenient
 way to pass contextual information (e.g. original sender) without having to use ``ask``
-or local correlation data structures.
+or maintain local correlation data structures.
 
-FIXME code example
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#update-request-context
+
+.. _replicator_get:
  
 Get
 ---
@@ -103,12 +119,16 @@ To retrieve the current value of a data you send ``Replicator.Get`` message to t
   (or all nodes in the cluster role group)
 
 
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#get
+
 As reply of the ``Get`` a ``Replicator.GetSuccess`` is sent to the sender of the
 ``Get`` if the value was successfully retrieved according to the supplied consistency
 level within the supplied timeout. Otherwise a ``Replicator.GetFailure`` is sent.
 If the key does not exist the reply will be ``Replicator.NotFound``.
 
-FIXME code example
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#get-response1
+
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#get-response2
 
 You will always read your own writes. For example if you send a ``Update`` message
 followed by a ``Get`` of the same ``key`` the ``Get`` will retrieve the change that was
@@ -120,9 +140,52 @@ In the ``Get`` message you can pass an optional request context in the same way 
 ``Update`` message, described above. For example the original sender can be passed and replied
 to after receiving and transforming ``GetSuccess``.
 
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#get-request-context
+
 You can retrieve all keys of a local replica by sending ``Replicator.GetKeys`` message to the
 ``Replicator``. The reply of ``GetKeys`` is a ``Replicator.GetKeysResult`` message.
 
+Consistency
+-----------
+
+The consistency level that is supplied in the :ref:`replicator_update` and :ref:`replicator_get`
+specifies per request how many replicas that must respond successfully to a write and read request.
+
+For low latency reads you use ``ReadLocal`` with the risk of retrieving stale data, i.e. updates
+from other nodes might not be visible yet. 
+
+When using ``WriteLocal`` the update is only written to the local replica and then disseminated
+in the background with the gossip protocol, which can take few seconds to spread to all nodes.
+
+``WriteAll`` and ``ReadAll`` is the strongest consistency level, but also the slowest and with
+lowest availability. For example, it is enough that one node is unavailable for a ``Get`` request
+and you will not receive the value.
+
+If consistency is important, you can ensure that a read always reflects the most recent
+write by using the following formula::
+
+    (nodes_written + nodes_read) > N 
+
+where N is the total number of nodes in the cluster, or the number of nodes with the role that is
+used for the ``Replicator``.
+
+For example, in a 7 node cluster you get this strong read consistency by writing to 4 nodes and
+reading from 4 nodes, or writing to 5 nodes and reading from 3 nodes.
+
+Strong consistency is the purpose of combining ``WriteQuorum`` and ``ReadQuorum`` levels.
+The ``Replicator`` writes and reads to a majority of replicas, i.e. **N / 2 + 1**. For example,
+in a 5 node cluster it writes to 3 nodes and reads from 3 nodes. In a 6 node cluster it writes 
+to 4 nodes and reads from 4 nodes.
+
+.. warning::
+
+  *Caveat:* Even if you use ``WriteQuorum`` and ``ReadQuorum`` there is small risk that you may
+  read stale data if the cluster membership has changed between the ``Update`` and the ``Get``.
+  For example, in cluster of 5 nodes when you ``Update`` and that change is written to 3 nodes: 
+  n1, n2, n3. Then 2 more nodes are added and a ``Get`` request is reading from 4 nodes, which 
+  happens to be n4, n5, n6, n7, i.e. the value on n1, n2, n3 is not seen in the response of the 
+  ``Get`` request.
+  
 Subscribe
 ---------
 
@@ -136,7 +199,7 @@ immediately.
 The subscriber is automatically removed if the subscriber is terminated. A subscriber can
 also be deregistered with the ``Replicator.Unsubscribe`` message.
 
-FIXME code example
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#subscribe
 
 Delete
 ------
@@ -154,7 +217,7 @@ data entries because that reduces the replication overhead when new nodes join t
 Subsequent ``Delete``, ``Update`` and ``Get`` requests will be replied with ``Replicator.DataDeleted``.
 Subscribers will receive ``Replicator.DataDeleted``.
 
-FIXME code example
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#delete
 
 Data Types
 ==========
@@ -185,12 +248,14 @@ It is tracking the increments (P) separate from the decrements (N). Both P and N
 as two internal ``GCounter``. Merge is handled by merging the internal P and N counters.
 The value of the counter is the value of the P counter minus the value of the N counter.
 
-FIXME code example
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#pncounter
 
 Several related counters can be managed in a map with the ``PNCounterMap`` data type.
 When the counters are placed in a ``PNCounterMap`` as opposed to placing them as separate top level
 values they are guaranteed to be replicated together as one unit, which is sometimes necessary for
 related data.
+
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#pncountermap
 
 Sets
 ----
@@ -199,7 +264,7 @@ If you only need to add elements to a set and not remove elements the ``GSet`` (
 the data type to use. The elements can be any type of values that can be serialized.
 Merge is simply the union of the two sets.
 
-FIXME code example
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#gset
 
 If you need add and remove operations you should use the ``ORSet`` (observed-remove set).
 Elements can be added and removed any number of times. If an element is concurrently added and
@@ -210,7 +275,7 @@ The version for the node that added the element is also tracked for each element
 called "birth dot". The version vector and the dots are used by the ``merge`` function to
 track causality of the operations and resolve concurrent updates.
 
-FIXME code example
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#orset
 
 Maps
 ----
@@ -237,8 +302,10 @@ such as the following specialized maps.
 ``LWWMap`` (last writer wins map) is a specialized ``ORMap`` with ``LWWRegister`` (last writer wins register)
 values. 
 
-Note that ``LWWRegister`` relies on synchronized clocks and should only be used when the choice of
-value is not important for concurrent updates occurring within the clock skew.
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#ormultimap
+
+Note that ``LWWRegister`` and therefore ``LWWMap`` relies on synchronized clocks and should only be used
+when the choice of value is not important for concurrent updates occurring within the clock skew.
 
 Instead of using timestamps based on ``System.currentTimeMillis()`` time it is possible to
 use a timestamp value based on something else, for example an increasing version number
@@ -258,6 +325,8 @@ Flags and Registers
 ``Flag`` is a data type for a boolean value that is initialized to ``false`` and can be switched
 to ``true``. Thereafter it cannot be changed. ``true`` wins over ``false`` in merge.
 
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#ormultimap
+
 ``LWWRegister`` (last writer wins register) can hold any (serializable) value.
 
 Merge of a ``LWWRegister`` takes the the register with highest timestamp. Note that this
@@ -267,9 +336,13 @@ value is not important for concurrent updates occurring within the clock skew.
 Merge takes the register updated by the node with lowest address (``UniqueAddress`` is ordered)
 if the timestamps are exactly the same.
 
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#lwwregister
+
 Instead of using timestamps based on ``System.currentTimeMillis()`` time it is possible to
 use a timestamp value based on something else, for example an increasing version number
 from a database record that is used for optimistic concurrency control.
+
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#lwwregister-custom-clock
 
 For first-write-wins semantics you can use the ``LWWRegister#reverseClock`` instead of the
 ``LWWRegister#defaultClock``.
@@ -284,11 +357,16 @@ A nice property of stateful CRDTs is that they typically compose nicely, i.e. yo
 smaller data types to build richer data structures. For example, the ``PNCounter`` is composed of
 two internal ``GCounter`` instances to keep track of increments and decrements separately.
 
-FIXME code example of "simplified" PNCounter
+Here is s simple implementation of a custom ``TwoPhaseSet`` that is using two internal ``GSet`` types
+to keep track of addition and removals.  A ``TwoPhaseSet`` is a set where an element may be added and
+removed, but never added again thereafter.
 
-FIXME perhaps show the shopping cart here?
+.. includecode:: code/docs/ddata/TwoPhaseSet.scala#twophaseset
 
 Data types should be immutable, i.e. "modifying" methods should return a new instance.
+
+Serialization
+^^^^^^^^^^^^^
 
 The data types must be serializable with an :ref:`Akka Serializer <serialization-scala>`.
 It is highly recommended that you implement  efficient serialization with Protobuf or similar
@@ -300,7 +378,39 @@ digests (SHA-1) to detect changes. Therefore it is important that the serializat
 and produce the same bytes for the same content. For example sets and maps should be sorted
 deterministically in the serialization.
 
-FIXME code example of serializer
+This is a protobuf representation of the above ``TwoPhaseSet``:
+
+.. includecode:: ../../src/main/protobuf/TwoPhaseSetMessages.proto#twophaseset
+
+The serializer for the ``TwoPhaseSet``:
+
+.. includecode:: code/docs/ddata/protobuf/TwoPhaseSetSerializer.scala#serializer
+
+Note that the elements of the sets are sorted so the SHA-1 digests are the same
+for the same elements.
+
+You register the serializer in configuration:
+ 
+.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#serializer-config
+
+Using compression can sometimes be a good idea to reduce the data size. Gzip compression is
+provided by the ``akka.cluster.ddata.protobuf.SerializationSupport`` trait:
+
+.. includecode:: code/docs/ddata/protobuf/TwoPhaseSetSerializer.scala#compression
+ 
+The two embedded ``GSet`` can be serialized as illustrated above, but in general when composing
+new data types from the existing built in types it is better to make use of the existing 
+serializer for those types. This can be done by declaring those as bytes fields in protobuf:
+
+.. includecode:: ../../src/main/protobuf/TwoPhaseSetMessages.proto#twophaseset2
+
+and use the methods ``otherMessageToProto`` and ``otherMessageFromBinary`` that are provided
+by the ``SerializationSupport`` trait to serialize and deserialize the ``GSet`` instances. This
+works with any type that has a registered Akka serializer. This is how such an serializer would
+look like for the ``TwoPhaseSet``:
+
+.. includecode:: code/docs/ddata/protobuf/TwoPhaseSetSerializer2.scala#serializer
+  
 
 CRDT Garbage
 ------------
@@ -383,5 +493,7 @@ maven::
 Configuration
 =============
   
-// FIXME include config, or add and link to the common configuration page
+The ``DistributedData`` extension can be configured with the following properties:
+
+.. includecode:: ../../../akka-distributed-data/src/main/resources/reference.conf#distributed-data
  

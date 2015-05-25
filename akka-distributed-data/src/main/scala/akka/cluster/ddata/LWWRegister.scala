@@ -9,55 +9,56 @@ import akka.util.HashCode
 
 object LWWRegister {
 
-  abstract class Clock {
+  abstract class Clock[A] {
     /**
      * @param currentTimestamp the current `timestamp` value of the `LWWRegister`
+     * @param value the register value to set and associate with the returned timestamp
      */
-    def nextTimestamp(currentTimestamp: Long): Long
+    def nextTimestamp(currentTimestamp: Long, value: A): Long
   }
 
-  final case class ClockValue(value: Long) extends Clock {
-    override def nextTimestamp(currentTimestamp: Long): Long = value
+  private val _defaultClock: Clock[Any] = new Clock[Any] {
+    override def nextTimestamp(currentTimestamp: Long, value: Any): Long =
+      math.max(System.currentTimeMillis(), currentTimestamp + 1)
   }
 
   /**
    * The default [[Clock]] is using max value of `System.currentTimeMillis()`
    * and `currentTimestamp + 1`.
    */
-  val defaultClock = new Clock {
-    override def nextTimestamp(currentTimestamp: Long): Long =
-      math.max(System.currentTimeMillis(), currentTimestamp + 1)
+  def defaultClock[A]: Clock[A] = _defaultClock.asInstanceOf[Clock[A]]
+
+  private val _reverseClock = new Clock[Any] {
+    override def nextTimestamp(currentTimestamp: Long, value: Any): Long =
+      math.min(-System.currentTimeMillis(), currentTimestamp - 1)
   }
 
   /**
    * This [[Clock]] can be used for first-write-wins semantics. It is using min value of
    * `-System.currentTimeMillis()` and `currentTimestamp + 1`, i.e. it is counting backwards.
    */
-  val reverseClock = new Clock {
-    override def nextTimestamp(currentTimestamp: Long): Long =
-      math.min(-System.currentTimeMillis(), currentTimestamp - 1)
-  }
+  def reverseClock[A]: Clock[A] = _reverseClock.asInstanceOf[Clock[A]]
 
   /**
    * INTERNAL API
    */
-  private[akka] def apply[A](node: UniqueAddress, initialValue: A, clock: Clock): LWWRegister[A] =
-    new LWWRegister(node, initialValue, clock.nextTimestamp(0L))
+  private[akka] def apply[A](node: UniqueAddress, initialValue: A, clock: Clock[A]): LWWRegister[A] =
+    new LWWRegister(node, initialValue, clock.nextTimestamp(0L, initialValue))
 
-  def apply[A](node: Cluster, initialValue: A, clock: Clock = defaultClock): LWWRegister[A] =
+  def apply[A](initialValue: A)(implicit node: Cluster, clock: Clock[A] = defaultClock[A]): LWWRegister[A] =
     apply(node.selfUniqueAddress, initialValue, clock)
 
   /**
    * Java API
    */
   def create[A](node: Cluster, initialValue: A): LWWRegister[A] =
-    apply(node, initialValue)
+    apply(initialValue)(node)
 
   /**
    * Java API
    */
-  def create[A](node: Cluster, initialValue: A, clock: Clock): LWWRegister[A] =
-    apply(node, initialValue, clock)
+  def create[A](node: Cluster, initialValue: A, clock: Clock[A]): LWWRegister[A] =
+    apply(initialValue)(node, clock)
 
   /**
    * Extract the [[LWWRegister#value]].
@@ -105,9 +106,20 @@ final class LWWRegister[A] private[akka] (
 
   /**
    * Change the value of the register.
+   *
+   * You can provide your `clock` implementation instead of using timestamps based
+   * on `System.currentTimeMillis()` time. The timestamp can for example be an
+   * increasing version number from a database record that is used for optimistic
+   * concurrency control.
+   */
+  def withValue(value: A)(implicit node: Cluster, clock: Clock[A] = defaultClock[A]): LWWRegister[A] =
+    withValue(node, value)
+
+  /**
+   * Change the value of the register.
    */
   def withValue(node: Cluster, value: A): LWWRegister[A] =
-    withValue(node, value, defaultClock)
+    withValue(node, value, defaultClock[A])
 
   /**
    * Change the value of the register.
@@ -117,7 +129,7 @@ final class LWWRegister[A] private[akka] (
    * increasing version number from a database record that is used for optimistic
    * concurrency control.
    */
-  def withValue(node: Cluster, value: A, clock: Clock): LWWRegister[A] =
+  def withValue(node: Cluster, value: A, clock: Clock[A]): LWWRegister[A] =
     withValue(node.selfUniqueAddress, value, clock)
 
   /**
@@ -128,8 +140,8 @@ final class LWWRegister[A] private[akka] (
   /**
    * INTERNAL API
    */
-  private[akka] def withValue(node: UniqueAddress, value: A, clock: Clock): LWWRegister[A] =
-    new LWWRegister(node, value, clock.nextTimestamp(timestamp))
+  private[akka] def withValue(node: UniqueAddress, value: A, clock: Clock[A]): LWWRegister[A] =
+    new LWWRegister(node, value, clock.nextTimestamp(timestamp, value))
 
   override def merge(that: LWWRegister[A]): LWWRegister[A] =
     if (that.timestamp > this.timestamp) that

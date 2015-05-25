@@ -64,6 +64,8 @@ final class ORMap[A <: ReplicatedData] private[akka] (
 
   def isEmpty: Boolean = values.isEmpty
 
+  def size: Int = values.size
+
   /**
    * Adds an entry to the map
    * @see [[#put]]

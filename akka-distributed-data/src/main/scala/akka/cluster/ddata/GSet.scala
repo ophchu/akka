@@ -41,6 +41,10 @@ final case class GSet[A](elements: Set[A]) extends ReplicatedData with Replicate
 
   def contains(a: A): Boolean = elements(a)
 
+  def isEmpty: Boolean = elements.isEmpty
+
+  def size: Int = elements.size
+
   /**
    * Adds an element to the set
    */

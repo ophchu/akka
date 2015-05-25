@@ -48,6 +48,12 @@ final class LWWMap[A] private[akka] (
 
   def get(key: String): Option[A] = underlying.get(key).map(_.value)
 
+  def contains(key: String): Boolean = underlying.contains(key)
+
+  def isEmpty: Boolean = underlying.isEmpty
+
+  def size: Int = underlying.size
+
   /**
    * Adds an entry to the map
    */
@@ -60,7 +66,7 @@ final class LWWMap[A] private[akka] (
    * Adds an entry to the map
    */
   def put(node: Cluster, key: String, value: A): LWWMap[A] =
-    put(node, key, value, defaultClock)
+    put(node, key, value, defaultClock[A])
 
   /**
    * Adds an entry to the map.
@@ -70,13 +76,24 @@ final class LWWMap[A] private[akka] (
    * increasing version number from a database record that is used for optimistic
    * concurrency control.
    */
-  def put(node: Cluster, key: String, value: A, clock: Clock): LWWMap[A] =
+  def put(node: Cluster, key: String, value: A, clock: Clock[A]): LWWMap[A] =
     put(node.selfUniqueAddress, key, value, clock)
+
+  /**
+   * Adds an entry to the map.
+   *
+   * You can provide your `clock` implementation instead of using timestamps based
+   * on `System.currentTimeMillis()` time. The timestamp can for example be an
+   * increasing version number from a database record that is used for optimistic
+   * concurrency control.
+   */
+  def put(key: String, value: A)(implicit node: Cluster, clock: Clock[A] = defaultClock[A]): LWWMap[A] =
+    put(node, key, value, clock)
 
   /**
    * INTERNAL API
    */
-  private[akka] def put(node: UniqueAddress, key: String, value: A, clock: Clock): LWWMap[A] = {
+  private[akka] def put(node: UniqueAddress, key: String, value: A, clock: Clock[A]): LWWMap[A] = {
     val newRegister = underlying.get(key) match {
       case Some(r) ⇒ r.withValue(node, value, clock)
       case None    ⇒ LWWRegister(node, value, clock)

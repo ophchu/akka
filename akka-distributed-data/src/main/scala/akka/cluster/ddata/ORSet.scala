@@ -165,6 +165,8 @@ final class ORSet[A] private[akka] (
 
   def isEmpty: Boolean = elementsMap.isEmpty
 
+  def size: Int = elementsMap.size
+
   /**
    * Adds an element to the set
    */

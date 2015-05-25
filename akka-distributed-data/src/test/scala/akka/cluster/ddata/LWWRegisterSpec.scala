@@ -18,18 +18,18 @@ class LWWRegisterSpec extends WordSpec with Matchers {
 
   "A LWWRegister" must {
     "use latest of successive assignments" in {
-      val r = (1 to 100).foldLeft(LWWRegister(node1, 0, defaultClock)) {
+      val r = (1 to 100).foldLeft(LWWRegister(node1, 0, defaultClock[Int])) {
         case (r, n) ⇒
           r.value should be(n - 1)
-          r.withValue(node1, n, defaultClock)
+          r.withValue(node1, n, defaultClock[Int])
       }
       r.value should be(100)
     }
 
     "merge by picking max timestamp" in {
-      val clock = new LWWRegister.Clock {
+      val clock = new LWWRegister.Clock[String] {
         val i = Iterator.from(100)
-        override def nextTimestamp(current: Long): Long = i.next()
+        override def nextTimestamp(current: Long, value: String): Long = i.next()
       }
       val r1 = LWWRegister(node1, "A", clock)
       r1.timestamp should be(100)
@@ -44,8 +44,8 @@ class LWWRegisterSpec extends WordSpec with Matchers {
     }
 
     "merge by picking least address when same timestamp" in {
-      val clock = new LWWRegister.Clock {
-        override def nextTimestamp(current: Long): Long = 100
+      val clock = new LWWRegister.Clock[String] {
+        override def nextTimestamp(current: Long, value: String): Long = 100
       }
       val r1 = LWWRegister(node1, "A", clock)
       val r2 = LWWRegister(node2, "B", clock)
@@ -59,7 +59,7 @@ class LWWRegisterSpec extends WordSpec with Matchers {
       (1 to 100).foldLeft(LWWRegister(node1, 0, defaultClock)) {
         case (r, n) ⇒
           r.value should be(n - 1)
-          val r2 = r.withValue(node1, n, defaultClock)
+          val r2 = r.withValue(node1, n, defaultClock[Int])
           r2.timestamp should be > r.timestamp
           r2
       }
@@ -78,10 +78,10 @@ class LWWRegisterSpec extends WordSpec with Matchers {
 
     "can be used as first-write-wins-register" in {
       import LWWRegister.reverseClock
-      val r = (1 to 100).foldLeft(LWWRegister(node1, 0, reverseClock)) {
+      val r = (1 to 100).foldLeft(LWWRegister(node1, 0, reverseClock[Int])) {
         case (r, n) ⇒
           r.value should be(0)
-          val newRegister = r.merge(r.withValue(node1, n, reverseClock))
+          val newRegister = r.merge(r.withValue(node1, n, reverseClock[Int]))
           newRegister should be(r)
           newRegister
       }

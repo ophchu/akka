@@ -58,7 +58,6 @@ object DataBot {
 
 }
 
-// This sample is used in the README.md (remember to copy when it is changed)
 class DataBot extends Actor with ActorLogging {
   import DataBot._
   import Replicator._
@@ -77,11 +76,11 @@ class DataBot extends Actor with ActorLogging {
       if (ThreadLocalRandom.current().nextBoolean()) {
         // add
         log.info("Adding: {}", s)
-        replicator ! Update("key", ORSet(), WriteLocal)(_ + s)
+        replicator ! Update("key", ORSet.empty[String], WriteLocal)(_ + s)
       } else {
         // remove
         log.info("Removing: {}", s)
-        replicator ! Update("key", ORSet(), WriteLocal)(_ - s)
+        replicator ! Update("key", ORSet.empty[String], WriteLocal)(_ - s)
       }
 
     case _: UpdateResponse ⇒ // ignore

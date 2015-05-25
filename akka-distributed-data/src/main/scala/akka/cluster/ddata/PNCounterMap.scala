@@ -36,6 +36,12 @@ final class PNCounterMap private[akka] (
 
   def get(key: String): Option[Long] = underlying.get(key).map(_.value)
 
+  def contains(key: String): Boolean = underlying.contains(key)
+
+  def isEmpty: Boolean = underlying.isEmpty
+
+  def size: Int = underlying.size
+
   /**
    * Increment the counter with the delta specified.
    * If the delta is negative then it will decrement instead of increment.

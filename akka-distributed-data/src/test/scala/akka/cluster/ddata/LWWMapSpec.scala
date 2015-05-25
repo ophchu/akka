@@ -19,13 +19,13 @@ class LWWMapSpec extends WordSpec with Matchers {
   "A LWWMap" must {
 
     "be able to set entries" in {
-      val m = LWWMap().put(node1, "a", 1, defaultClock).put(node2, "b", 2, defaultClock)
+      val m = LWWMap.empty[Int].put(node1, "a", 1, defaultClock[Int]).put(node2, "b", 2, defaultClock[Int])
       m.entries should be(Map("a" -> 1, "b" -> 2))
     }
 
     "be able to have its entries correctly merged with another LWWMap with other entries" in {
-      val m1 = LWWMap.empty.put(node1, "a", 1, defaultClock).put(node1, "b", 2, defaultClock)
-      val m2 = LWWMap.empty.put(node2, "c", 3, defaultClock)
+      val m1 = LWWMap.empty.put(node1, "a", 1, defaultClock[Int]).put(node1, "b", 2, defaultClock[Int])
+      val m2 = LWWMap.empty.put(node2, "c", 3, defaultClock[Int])
 
       // merge both ways
       val expected = Map("a" -> 1, "b" -> 2, "c" -> 3)
@@ -34,8 +34,8 @@ class LWWMapSpec extends WordSpec with Matchers {
     }
 
     "be able to remove entry" in {
-      val m1 = LWWMap.empty.put(node1, "a", 1, defaultClock).put(node1, "b", 2, defaultClock)
-      val m2 = LWWMap.empty.put(node2, "c", 3, defaultClock)
+      val m1 = LWWMap.empty.put(node1, "a", 1, defaultClock[Int]).put(node1, "b", 2, defaultClock[Int])
+      val m2 = LWWMap.empty.put(node2, "c", 3, defaultClock[Int])
 
       val merged1 = m1 merge m2
 
@@ -43,12 +43,12 @@ class LWWMapSpec extends WordSpec with Matchers {
       (merged1 merge m3).entries should be(Map("a" -> 1, "c" -> 3))
 
       // but if there is a conflicting update the entry is not removed
-      val m4 = merged1.put(node2, "b", 22, defaultClock)
+      val m4 = merged1.put(node2, "b", 22, defaultClock[Int])
       (m3 merge m4).entries should be(Map("a" -> 1, "b" -> 22, "c" -> 3))
     }
 
     "have unapply extractor" in {
-      val m1 = LWWMap.empty.put(node1, "a", 1L, defaultClock)
+      val m1 = LWWMap.empty.put(node1, "a", 1L, defaultClock[Long])
       val LWWMap(entries1) = m1
       val entries2: Map[String, Long] = entries1
       Changed("key", m1) match {

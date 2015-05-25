@@ -117,6 +117,9 @@ trait SerializationSupport {
       buildOther()
   }
 
+  def otherMessageFromBinary(bytes: Array[Byte]): AnyRef =
+    otherMessageFromProto(dm.OtherMessage.parseFrom(bytes))
+
   def otherMessageFromProto(other: dm.OtherMessage): AnyRef = {
     serialization.deserialize(
       other.getEnclosedMessage.toByteArray,

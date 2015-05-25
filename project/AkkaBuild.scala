@@ -192,7 +192,7 @@ object AkkaBuild extends Build {
     dependencies = Seq(actor, testkit % "test->test",
       remote % "compile;test->test", cluster, clusterMetrics, slf4j, agent, camel, osgi,
       persistence % "compile;provided->provided;test->test", persistenceTck,
-      typed % "compile;test->test")
+      typed % "compile;test->test", distributedData)
   )
 
   lazy val contrib = Project(

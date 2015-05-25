@@ -79,6 +79,12 @@ final class ORMultiMap[A] private[akka] (private[akka] val underlying: ORMap[ORS
   def getOrElse(key: String, default: ⇒ Set[A]): Set[A] =
     get(key).getOrElse(default)
 
+  def contains(key: String): Boolean = underlying.contains(key)
+
+  def isEmpty: Boolean = underlying.isEmpty
+
+  def size: Int = underlying.size
+
   /**
    * Convenience for put. Requires an implicit Cluster.
    * @see [[#put]]
