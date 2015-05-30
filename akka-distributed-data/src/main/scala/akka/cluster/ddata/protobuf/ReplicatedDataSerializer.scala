@@ -7,11 +7,9 @@ import java.{ lang ⇒ jl }
 import java.util.ArrayList
 import java.util.Collections
 import java.util.Comparator
-
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.collection.breakOut
-
 import akka.actor.ExtendedActorSystem
 import akka.cluster.ddata.Flag
 import akka.cluster.ddata.GCounter
@@ -30,6 +28,7 @@ import akka.cluster.ddata.VersionVector
 import akka.cluster.ddata.protobuf.msg.{ ReplicatedDataMessages ⇒ rd }
 import akka.cluster.ddata.protobuf.msg.{ ReplicatorMessages ⇒ dm }
 import akka.serialization.Serializer
+import com.google.protobuf.ByteString
 
 /**
  * Protobuf serializer of ReplicatedData.
@@ -221,7 +220,7 @@ class ReplicatedDataSerializer(val system: ExtendedActorSystem) extends Serializ
     val b = rd.GCounter.newBuilder()
     gcounter.state.toVector.sortBy { case (address, _) ⇒ address }.foreach {
       case (address, value) ⇒ b.addEntries(rd.GCounter.Entry.newBuilder().
-        setNode(uniqueAddressToProto(address)).setValue(value))
+        setNode(uniqueAddressToProto(address)).setValue(ByteString.copyFrom(value.toByteArray)))
     }
     b.build()
   }
@@ -231,7 +230,7 @@ class ReplicatedDataSerializer(val system: ExtendedActorSystem) extends Serializ
 
   def gcounterFromProto(gcounter: rd.GCounter): GCounter = {
     new GCounter(state = gcounter.getEntriesList.asScala.map(entry ⇒
-      uniqueAddressFromProto(entry.getNode) -> entry.getValue)(breakOut))
+      uniqueAddressFromProto(entry.getNode) -> BigInt(entry.getValue.toByteArray))(breakOut))
   }
 
   def pncounterToProto(pncounter: PNCounter): rd.PNCounter =

@@ -6,6 +6,7 @@ package akka.cluster.ddata
 import akka.cluster.Cluster
 import akka.cluster.UniqueAddress
 import akka.util.HashCode
+import java.math.BigInteger
 
 object PNCounter {
   val empty: PNCounter = new PNCounter(GCounter.empty, GCounter.empty)
@@ -18,7 +19,7 @@ object PNCounter {
   /**
    * Extract the [[GCounter#value]].
    */
-  def unapply(c: PNCounter): Option[Long] = Some(c.value)
+  def unapply(c: PNCounter): Option[BigInt] = Some(c.value)
 }
 
 /**
@@ -38,14 +39,19 @@ object PNCounter {
 @SerialVersionUID(1L)
 final class PNCounter private[akka] (
   private[akka] val increments: GCounter, private[akka] val decrements: GCounter)
-  extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
+    extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
 
   type T = PNCounter
 
   /**
-   * Current total value of the counter.
+   * Scala API: Current total value of the counter.
    */
-  def value: Long = increments.value - decrements.value
+  def value: BigInt = increments.value - decrements.value
+
+  /**
+   * Java API: Current total value of the counter.
+   */
+  def getValue: BigInteger = value.bigInteger
 
   /**
    * Increment the counter with the delta specified.

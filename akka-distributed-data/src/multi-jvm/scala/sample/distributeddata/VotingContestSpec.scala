@@ -41,7 +41,7 @@ object VotingService {
   case object CloseAck
   final case class Vote(participant: String)
   case object GetVotes
-  final case class Votes(result: Map[String, Long], open: Boolean)
+  final case class Votes(result: Map[String, BigInt], open: Boolean)
 
   private final case class GetVotesReq(replyTo: ActorRef)
 }
@@ -168,7 +168,7 @@ class VotingContestSpec extends MultiNodeSpec(VotingContestSpec) with STMultiNod
         votingService ! Close
       }
 
-      val expected = (1 to 20).map(n ⇒ "#" + n -> (3L * N / 20)).toMap
+      val expected = (1 to 20).map(n ⇒ "#" + n -> BigInt(3L * N / 20)).toMap
       awaitAssert {
         votingService ! GetVotes
         expectMsg(3.seconds, Votes(expected, false))

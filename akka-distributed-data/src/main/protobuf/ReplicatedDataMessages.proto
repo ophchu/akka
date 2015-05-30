@@ -52,7 +52,7 @@ message LWWRegister {
 message GCounter {
   message Entry {
     required UniqueAddress node = 1;
-    required int64 value = 2;
+    required bytes value = 2;
   }
   
   repeated Entry entries = 1; 

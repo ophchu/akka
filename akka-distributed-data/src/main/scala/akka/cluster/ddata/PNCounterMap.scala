@@ -5,6 +5,7 @@ package akka.cluster.ddata
 
 import akka.cluster.Cluster
 import akka.cluster.UniqueAddress
+import java.math.BigInteger
 
 object PNCounterMap {
   val empty: PNCounterMap = new PNCounterMap(ORMap.empty)
@@ -17,7 +18,7 @@ object PNCounterMap {
   /**
    * Extract the [[PNCounterMap#entries]].
    */
-  def unapply(m: PNCounterMap): Option[Map[String, Long]] = Some(m.entries)
+  def unapply(m: PNCounterMap): Option[Map[String, BigInt]] = Some(m.entries)
 }
 
 /**
@@ -28,13 +29,25 @@ object PNCounterMap {
 @SerialVersionUID(1L)
 final class PNCounterMap private[akka] (
   private[akka] val underlying: ORMap[PNCounter])
-  extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
+    extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
 
   type T = PNCounterMap
 
-  def entries: Map[String, Long] = underlying.entries.map { case (k, c) ⇒ k -> c.value }
+  /** Scala API */
+  def entries: Map[String, BigInt] = underlying.entries.map { case (k, c) ⇒ k -> c.value }
 
-  def get(key: String): Option[Long] = underlying.get(key).map(_.value)
+  /** Java API */
+  def getEntries: Map[String, BigInteger] = underlying.entries.map { case (k, c) ⇒ k -> c.value.bigInteger }
+
+  /**
+   *  Scala API: The count for a key
+   */
+  def get(key: String): Option[BigInt] = underlying.get(key).map(_.value)
+
+  /**
+   * Java API: The count for a key, or `null` if it doesn't exist
+   */
+  def getValue(key: String): BigInteger = underlying.get(key).map(_.value.bigInteger).orNull
 
   def contains(key: String): Boolean = underlying.contains(key)
 

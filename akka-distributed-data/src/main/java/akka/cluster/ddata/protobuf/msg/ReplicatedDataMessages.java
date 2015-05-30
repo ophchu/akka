@@ -7224,15 +7224,15 @@ public final class ReplicatedDataMessages {
        */
       akka.cluster.ddata.protobuf.msg.ReplicatorMessages.UniqueAddressOrBuilder getNodeOrBuilder();
 
-      // required int64 value = 2;
+      // required bytes value = 2;
       /**
-       * <code>required int64 value = 2;</code>
+       * <code>required bytes value = 2;</code>
        */
       boolean hasValue();
       /**
-       * <code>required int64 value = 2;</code>
+       * <code>required bytes value = 2;</code>
        */
-      long getValue();
+      com.google.protobuf.ByteString getValue();
     }
     /**
      * Protobuf type {@code akka.cluster.ddata.GCounter.Entry}
@@ -7298,9 +7298,9 @@ public final class ReplicatedDataMessages {
                 bitField0_ |= 0x00000001;
                 break;
               }
-              case 16: {
+              case 18: {
                 bitField0_ |= 0x00000002;
-                value_ = input.readInt64();
+                value_ = input.readBytes();
                 break;
               }
             }
@@ -7365,25 +7365,25 @@ public final class ReplicatedDataMessages {
         return node_;
       }
 
-      // required int64 value = 2;
+      // required bytes value = 2;
       public static final int VALUE_FIELD_NUMBER = 2;
-      private long value_;
+      private com.google.protobuf.ByteString value_;
       /**
-       * <code>required int64 value = 2;</code>
+       * <code>required bytes value = 2;</code>
        */
       public boolean hasValue() {
         return ((bitField0_ & 0x00000002) == 0x00000002);
       }
       /**
-       * <code>required int64 value = 2;</code>
+       * <code>required bytes value = 2;</code>
        */
-      public long getValue() {
+      public com.google.protobuf.ByteString getValue() {
         return value_;
       }
 
       private void initFields() {
         node_ = akka.cluster.ddata.protobuf.msg.ReplicatorMessages.UniqueAddress.getDefaultInstance();
-        value_ = 0L;
+        value_ = com.google.protobuf.ByteString.EMPTY;
       }
       private byte memoizedIsInitialized = -1;
       public final boolean isInitialized() {
@@ -7413,7 +7413,7 @@ public final class ReplicatedDataMessages {
           output.writeMessage(1, node_);
         }
         if (((bitField0_ & 0x00000002) == 0x00000002)) {
-          output.writeInt64(2, value_);
+          output.writeBytes(2, value_);
         }
         getUnknownFields().writeTo(output);
       }
@@ -7430,7 +7430,7 @@ public final class ReplicatedDataMessages {
         }
         if (((bitField0_ & 0x00000002) == 0x00000002)) {
           size += com.google.protobuf.CodedOutputStream
-            .computeInt64Size(2, value_);
+            .computeBytesSize(2, value_);
         }
         size += getUnknownFields().getSerializedSize();
         memoizedSerializedSize = size;
@@ -7555,7 +7555,7 @@ public final class ReplicatedDataMessages {
             nodeBuilder_.clear();
           }
           bitField0_ = (bitField0_ & ~0x00000001);
-          value_ = 0L;
+          value_ = com.google.protobuf.ByteString.EMPTY;
           bitField0_ = (bitField0_ & ~0x00000002);
           return this;
         }
@@ -7775,35 +7775,38 @@ public final class ReplicatedDataMessages {
           return nodeBuilder_;
         }
 
-        // required int64 value = 2;
-        private long value_ ;
+        // required bytes value = 2;
+        private com.google.protobuf.ByteString value_ = com.google.protobuf.ByteString.EMPTY;
         /**
-         * <code>required int64 value = 2;</code>
+         * <code>required bytes value = 2;</code>
          */
         public boolean hasValue() {
           return ((bitField0_ & 0x00000002) == 0x00000002);
         }
         /**
-         * <code>required int64 value = 2;</code>
+         * <code>required bytes value = 2;</code>
          */
-        public long getValue() {
+        public com.google.protobuf.ByteString getValue() {
           return value_;
         }
         /**
-         * <code>required int64 value = 2;</code>
+         * <code>required bytes value = 2;</code>
          */
-        public Builder setValue(long value) {
-          bitField0_ |= 0x00000002;
+        public Builder setValue(com.google.protobuf.ByteString value) {
+          if (value == null) {
+    throw new NullPointerException();
+  }
+  bitField0_ |= 0x00000002;
           value_ = value;
           onChanged();
           return this;
         }
         /**
-         * <code>required int64 value = 2;</code>
+         * <code>required bytes value = 2;</code>
          */
         public Builder clearValue() {
           bitField0_ = (bitField0_ & ~0x00000002);
-          value_ = 0L;
+          value_ = getDefaultInstance().getValue();
           onChanged();
           return this;
         }
@@ -16883,7 +16886,7 @@ public final class ReplicatedDataMessages {
       "data.OtherMessage\"\210\001\n\010GCounter\0223\n\007entrie" +
       "s\030\001 \003(\0132\".akka.cluster.ddata.GCounter.En" +
       "try\032G\n\005Entry\022/\n\004node\030\001 \002(\0132!.akka.cluste" +
-      "r.ddata.UniqueAddress\022\r\n\005value\030\002 \002(\003\"o\n\t" +
+      "r.ddata.UniqueAddress\022\r\n\005value\030\002 \002(\014\"o\n\t" +
       "PNCounter\0220\n\nincrements\030\001 \002(\0132\034.akka.clu",
       "ster.ddata.GCounter\0220\n\ndecrements\030\002 \002(\0132" +
       "\034.akka.cluster.ddata.GCounter\"\224\001\n\rVersio" +

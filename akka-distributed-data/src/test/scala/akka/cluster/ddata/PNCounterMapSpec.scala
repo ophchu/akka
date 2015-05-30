@@ -49,10 +49,10 @@ class PNCounterMapSpec extends WordSpec with Matchers {
     "have unapply extractor" in {
       val m1 = PNCounterMap.empty.increment(node1, "a", 1).increment(node2, "b", 2)
       val PNCounterMap(entries1) = m1
-      val entries2: Map[String, Long] = entries1
+      val entries2: Map[String, BigInt] = entries1
       Changed("key", m1) match {
         case Changed("key", PNCounterMap(entries3)) ⇒
-          val entries4: Map[String, Long] = entries3
+          val entries4: Map[String, BigInt] = entries3
           entries4 should be(Map("a" -> 1L, "b" -> 2L))
       }
     }

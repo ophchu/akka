@@ -5,6 +5,7 @@ package akka.cluster.ddata
 
 import akka.cluster.Cluster
 import akka.cluster.UniqueAddress
+import java.math.BigInteger
 
 object GCounter {
   val empty: GCounter = new GCounter
@@ -17,7 +18,9 @@ object GCounter {
   /**
    * Extract the [[GCounter#value]].
    */
-  def unapply(c: GCounter): Option[Long] = Some(c.value)
+  def unapply(c: GCounter): Option[BigInt] = Some(c.value)
+
+  private val Zero = BigInt(0)
 }
 
 /**
@@ -36,15 +39,22 @@ object GCounter {
  */
 @SerialVersionUID(1L)
 final class GCounter private[akka] (
-  private[akka] val state: Map[UniqueAddress, Long] = Map.empty)
-  extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
+  private[akka] val state: Map[UniqueAddress, BigInt] = Map.empty)
+    extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
+
+  import GCounter.Zero
 
   type T = GCounter
 
   /**
-   * Current total value of the counter.
+   * Scala API: Current total value of the counter.
    */
-  def value: Long = state.values.sum
+  def value: BigInt = state.values.foldLeft(Zero) { (acc, v) ⇒ acc + v }
+
+  /**
+   * Java API: Current total value of the counter.
+   */
+  def getValue: BigInteger = value.bigInteger
 
   /**
    * Increment the counter with the delta specified.
@@ -67,13 +77,12 @@ final class GCounter private[akka] (
   /**
    * INTERNAL API
    */
-  private[akka] def increment(key: UniqueAddress, delta: Long): GCounter = {
+  private[akka] def increment(key: UniqueAddress, delta: BigInt): GCounter = {
     require(delta >= 0, "Can't decrement a GCounter")
     if (delta == 0) this
     else state.get(key) match {
       case Some(v) ⇒
         val tot = v + delta
-        require(tot >= 0, "Number overflow")
         new GCounter(state + (key -> tot))
       case None ⇒ new GCounter(state + (key -> delta))
     }
@@ -82,7 +91,7 @@ final class GCounter private[akka] (
   override def merge(that: GCounter): GCounter = {
     var merged = that.state
     for ((key, thisValue) ← state) {
-      val thatValue = merged.getOrElse(key, 0L)
+      val thatValue = merged.getOrElse(key, Zero)
       if (thisValue > thatValue)
         merged = merged.updated(key, thisValue)
     }

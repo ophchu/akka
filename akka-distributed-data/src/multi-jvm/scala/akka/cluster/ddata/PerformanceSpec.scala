@@ -64,8 +64,8 @@ class PerformanceSpec extends MultiNodeSpec(PerformanceSpec) with STMultiNodeSpe
   implicit val cluster = Cluster(system)
   val replicator = DistributedData(system).replicator
   val timeout = 3.seconds.dilated
-  val factor = 1 // use 3 here for serious tuning
-  val repeatCount = 2 // use at least 10 here for serious tuning
+  val factor = 5 // use 3 here for serious tuning
+  val repeatCount = 10 // use at least 10 here for serious tuning
 
   def join(from: RoleName, to: RoleName): Unit = {
     runOn(from) {
@@ -136,55 +136,55 @@ class PerformanceSpec extends MultiNodeSpec(PerformanceSpec) with STMultiNodeSpe
       enterBarrier("after-setup")
     }
 
-    "be great for ORSet Update WriteLocal" in {
-      val keys = (1 to repeatCount).map("A" + _)
-      val n = 1000 * factor
-      val expectedData = (0 until n).toSet
-      repeat("ORSet Update WriteLocal", keys, n)({ (key, i, replyTo) ⇒
-        replicator.tell(Update(key, ORSet(), WriteLocal)(_ + i), replyTo)
-      }, key ⇒ awaitReplicated(key, expectedData))
-
-      enterBarrier("after-1")
-    }
-
-    "be blazingly fast for ORSet Get ReadLocal" in {
-      val keys = (1 to repeatCount).map("A" + _)
-      repeat("Get ReadLocal", keys, 100000 * factor) { (key, i, replyTo) ⇒
-        replicator.tell(Get(key, ReadLocal), replyTo)
-      }
-      enterBarrier("after-2")
-    }
-
-    "be good for ORSet Update WriteLocal and gossip replication" in {
-      val keys = (1 to repeatCount).map("B" + _)
-      val n = 200 * factor
-      val expected = Some((0 until n).toSet)
-      repeat("ORSet Update WriteLocal + gossip", keys, n, expected) { (key, i, replyTo) ⇒
-        replicator.tell(Update(key, ORSet(), WriteLocal)(_ + i), replyTo)
-      }
-      enterBarrier("after-3")
-    }
-
-    "be good for ORSet Update WriteLocal and gossip of existing keys" in {
-      val keys = (1 to repeatCount).map("B" + _)
-      val n = 200 * factor
-      val expected = Some((0 until n).toSet ++ (0 until n).map(-_).toSet)
-      repeat("ORSet Update WriteLocal existing + gossip", keys, n, expected) { (key, i, replyTo) ⇒
-        replicator.tell(Update(key, ORSet(), WriteLocal)(_ + (-i)), replyTo)
-      }
-      enterBarrier("after-4")
-    }
-
-    "be good for ORSet Update WriteTwo and gossip replication" in {
-      val keys = (1 to repeatCount).map("C" + _)
-      val n = 200 * factor
-      val expected = Some((0 until n).toSet)
-      val writeTwo = WriteTo(2, timeout)
-      repeat("ORSet Update WriteTwo + gossip", keys, n, expected) { (key, i, replyTo) ⇒
-        replicator.tell(Update(key, ORSet(), writeTwo)(_ + i), replyTo)
-      }
-      enterBarrier("after-5")
-    }
+    //    "be great for ORSet Update WriteLocal" in {
+    //      val keys = (1 to repeatCount).map("A" + _)
+    //      val n = 1000 * factor
+    //      val expectedData = (0 until n).toSet
+    //      repeat("ORSet Update WriteLocal", keys, n)({ (key, i, replyTo) ⇒
+    //        replicator.tell(Update(key, ORSet(), WriteLocal)(_ + i), replyTo)
+    //      }, key ⇒ awaitReplicated(key, expectedData))
+    //
+    //      enterBarrier("after-1")
+    //    }
+    //
+    //    "be blazingly fast for ORSet Get ReadLocal" in {
+    //      val keys = (1 to repeatCount).map("A" + _)
+    //      repeat("Get ReadLocal", keys, 100000 * factor) { (key, i, replyTo) ⇒
+    //        replicator.tell(Get(key, ReadLocal), replyTo)
+    //      }
+    //      enterBarrier("after-2")
+    //    }
+    //
+    //    "be good for ORSet Update WriteLocal and gossip replication" in {
+    //      val keys = (1 to repeatCount).map("B" + _)
+    //      val n = 200 * factor
+    //      val expected = Some((0 until n).toSet)
+    //      repeat("ORSet Update WriteLocal + gossip", keys, n, expected) { (key, i, replyTo) ⇒
+    //        replicator.tell(Update(key, ORSet(), WriteLocal)(_ + i), replyTo)
+    //      }
+    //      enterBarrier("after-3")
+    //    }
+    //
+    //    "be good for ORSet Update WriteLocal and gossip of existing keys" in {
+    //      val keys = (1 to repeatCount).map("B" + _)
+    //      val n = 200 * factor
+    //      val expected = Some((0 until n).toSet ++ (0 until n).map(-_).toSet)
+    //      repeat("ORSet Update WriteLocal existing + gossip", keys, n, expected) { (key, i, replyTo) ⇒
+    //        replicator.tell(Update(key, ORSet(), WriteLocal)(_ + (-i)), replyTo)
+    //      }
+    //      enterBarrier("after-4")
+    //    }
+    //
+    //    "be good for ORSet Update WriteTwo and gossip replication" in {
+    //      val keys = (1 to repeatCount).map("C" + _)
+    //      val n = 200 * factor
+    //      val expected = Some((0 until n).toSet)
+    //      val writeTwo = WriteTo(2, timeout)
+    //      repeat("ORSet Update WriteTwo + gossip", keys, n, expected) { (key, i, replyTo) ⇒
+    //        replicator.tell(Update(key, ORSet(), writeTwo)(_ + i), replyTo)
+    //      }
+    //      enterBarrier("after-5")
+    //    }
 
     "be awesome for GCounter Update WriteLocal" in {
       val startTime = System.nanoTime()
