@@ -40,7 +40,7 @@ object GCounter {
 @SerialVersionUID(1L)
 final class GCounter private[akka] (
   private[akka] val state: Map[UniqueAddress, BigInt] = Map.empty)
-    extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
+  extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
 
   import GCounter.Zero
 

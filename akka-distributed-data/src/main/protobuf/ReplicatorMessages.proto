@@ -8,8 +8,8 @@ option optimize_for = SPEED;
 
 message Get {
   required string key = 1;
-  required int32 consistency = 2;
-  required int32 timeout = 3;
+  required sint32 consistency = 2;
+  required uint32 timeout = 3;
   optional OtherMessage request = 4;   
 }
 
@@ -97,7 +97,7 @@ message Gossip {
 
 message UniqueAddress {
   required Address address = 1;
-  required uint32 uid = 2;
+  required sfixed32 uid = 2;
 }
 
 message Address {

@@ -39,7 +39,7 @@ object PNCounter {
 @SerialVersionUID(1L)
 final class PNCounter private[akka] (
   private[akka] val increments: GCounter, private[akka] val decrements: GCounter)
-    extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
+  extends ReplicatedData with ReplicatedDataSerialization with RemovedNodePruning {
 
   type T = PNCounter
 

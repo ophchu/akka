@@ -121,60 +121,61 @@ class ReplicatedDataSerializer(val system: ExtendedActorSystem) extends Serializ
       gset.getLongElementsList.iterator.asScala ++
       gset.getOtherElementsList.iterator.asScala.map(otherMessageFromProto))
 
-  private val orsetStringEntryComparator = new Comparator[rd.ORSet.StringEntry] {
-    override def compare(a: rd.ORSet.StringEntry, b: rd.ORSet.StringEntry): Int =
-      a.getElement.compareTo(b.getElement)
-  }
+  def orsetToProto(orset: ORSet[_]): rd.ORSet =
+    orsetToProtoImpl(orset.asInstanceOf[ORSet[Any]])
 
-  private val orsetIntEntryComparator = new Comparator[rd.ORSet.IntEntry] {
-    override def compare(a: rd.ORSet.IntEntry, b: rd.ORSet.IntEntry): Int =
-      a.getElement.compareTo(b.getElement)
-  }
-
-  private val orsetLongEntryComparator = new Comparator[rd.ORSet.LongEntry] {
-    override def compare(a: rd.ORSet.LongEntry, b: rd.ORSet.LongEntry): Int =
-      a.getElement.compareTo(b.getElement)
-  }
-
-  private val orsetOtherEntryComparator = new Comparator[rd.ORSet.OtherEntry] {
-    override def compare(a: rd.ORSet.OtherEntry, b: rd.ORSet.OtherEntry): Int =
-      OtherMessageComparator.compare(a.getElement, b.getElement)
-  }
-
-  def orsetToProto(orset: ORSet[_]): rd.ORSet = {
+  private def orsetToProtoImpl(orset: ORSet[Any]): rd.ORSet = {
     val b = rd.ORSet.newBuilder().setVvector(versionVectorToProto(orset.vvector))
     // using java collections and sorting for performance (avoid conversions)
-    val stringElements = new ArrayList[rd.ORSet.StringEntry]
-    val intElements = new ArrayList[rd.ORSet.IntEntry]
-    val longElements = new ArrayList[rd.ORSet.LongEntry]
-    val otherElements = new ArrayList[rd.ORSet.OtherEntry]
-    orset.elementsMap.foreach {
-      case (s: String, dot) ⇒
-        stringElements.add(rd.ORSet.StringEntry.newBuilder().setElement(s).setDot(versionVectorToProto(dot)).build())
-      case (i: Int, dot) ⇒
-        intElements.add(rd.ORSet.IntEntry.newBuilder().setElement(i).setDot(versionVectorToProto(dot)).build())
-      case (l: Long, dot) ⇒
-        longElements.add(rd.ORSet.LongEntry.newBuilder().setElement(l).setDot(versionVectorToProto(dot)).build())
-      case (other, dot) ⇒
-        otherElements.add(rd.ORSet.OtherEntry.newBuilder().setElement(otherMessageToProto(other)).
-          setDot(versionVectorToProto(dot)).build())
+    val stringElements = new ArrayList[String]
+    val intElements = new ArrayList[Integer]
+    val longElements = new ArrayList[jl.Long]
+    val otherElements = new ArrayList[dm.OtherMessage]
+    var otherElementsMap = Map.empty[dm.OtherMessage, Any]
+    orset.elementsMap.keysIterator.foreach {
+      case s: String ⇒ stringElements.add(s)
+      case i: Int    ⇒ intElements.add(i)
+      case l: Long   ⇒ longElements.add(l)
+      case other ⇒
+        val enclosedMsg = otherMessageToProto(other)
+        otherElements.add(enclosedMsg)
+        // need the mapping back to the `other` when adding dots
+        otherElementsMap = otherElementsMap.updated(enclosedMsg, other)
     }
+
+    def addDots(elements: ArrayList[_]): Unit = {
+      // add corresponding dots in same order
+      val iter = elements.iterator
+      while (iter.hasNext) {
+        val element = iter.next() match {
+          case enclosedMsg: dm.OtherMessage ⇒ otherElementsMap(enclosedMsg)
+          case e                            ⇒ e
+        }
+        b.addDots(versionVectorToProto(orset.elementsMap(element)))
+      }
+    }
+
     if (!stringElements.isEmpty) {
-      Collections.sort(stringElements, orsetStringEntryComparator)
+      Collections.sort(stringElements)
       b.addAllStringElements(stringElements)
+      addDots(stringElements)
     }
     if (!intElements.isEmpty) {
-      Collections.sort(intElements, orsetIntEntryComparator)
+      Collections.sort(intElements)
       b.addAllIntElements(intElements)
+      addDots(intElements)
     }
     if (!longElements.isEmpty) {
-      Collections.sort(longElements, orsetLongEntryComparator)
+      Collections.sort(longElements)
       b.addAllLongElements(longElements)
+      addDots(longElements)
     }
     if (!otherElements.isEmpty) {
-      Collections.sort(otherElements, orsetOtherEntryComparator)
+      Collections.sort(otherElements, OtherMessageComparator)
       b.addAllOtherElements(otherElements)
+      addDots(otherElements)
     }
+
     b.build()
   }
 
@@ -182,13 +183,16 @@ class ReplicatedDataSerializer(val system: ExtendedActorSystem) extends Serializ
     orsetFromProto(rd.ORSet.parseFrom(decompress(bytes)))
 
   def orsetFromProto(orset: rd.ORSet): ORSet[Any] = {
-    val entries =
-      orset.getStringElementsList.iterator.asScala.map(e ⇒ e.getElement -> versionVectorFromProto(e.getDot)) ++
-        orset.getIntElementsList.iterator.asScala.map(e ⇒ e.getElement -> versionVectorFromProto(e.getDot)) ++
-        orset.getLongElementsList.iterator.asScala.map(e ⇒ e.getElement -> versionVectorFromProto(e.getDot)) ++
-        orset.getOtherElementsList.iterator.asScala.map(e ⇒
-          otherMessageFromProto(e.getElement) -> versionVectorFromProto(e.getDot))
-    new ORSet(elementsMap = entries.toMap, vvector = versionVectorFromProto(orset.getVvector))
+    val elements: Iterator[Any] =
+      (orset.getStringElementsList.iterator.asScala ++
+        orset.getIntElementsList.iterator.asScala ++
+        orset.getLongElementsList.iterator.asScala ++
+        orset.getOtherElementsList.iterator.asScala.map(otherMessageFromProto))
+
+    val dots = orset.getDotsList.asScala.map(versionVectorFromProto).iterator
+    val elementsMap = elements.zip(dots).toMap
+
+    new ORSet(elementsMap, vvector = versionVectorFromProto(orset.getVvector))
   }
 
   def flagToProto(flag: Flag): rd.Flag =

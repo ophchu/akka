@@ -9,34 +9,19 @@ import "ReplicatorMessages.proto";
 
 message GSet {
   repeated string stringElements = 1;
-  repeated int32 intElements = 2;
-  repeated int64 longElements = 3;
+  repeated sint32 intElements = 2 [packed=true];
+  repeated sint64 longElements = 3 [packed=true];
   repeated OtherMessage otherElements = 4;
 }
 
 message ORSet {
-  message StringEntry {
-    required string element = 1;
-    required VersionVector dot = 2;
-  }
-  message IntEntry {
-    required int32 element = 1;
-    required VersionVector dot = 2;
-  }
-  message LongEntry {
-    required int64 element = 1;
-    required VersionVector dot = 2;
-  }
-  message OtherEntry {
-    required OtherMessage element = 1;
-    required VersionVector dot = 2;
-  }
-  
   required VersionVector vvector = 1;
-  repeated StringEntry stringElements = 2;
-  repeated IntEntry intElements = 3;
-  repeated LongEntry longElements = 4;
-  repeated OtherEntry otherElements = 5;
+  repeated VersionVector dots = 2; 
+  repeated string stringElements = 3;
+  repeated sint32 intElements = 4 [packed=true];
+  repeated sint64 longElements = 5 [packed=true];
+  repeated OtherMessage otherElements = 6;
+  
 }
 
 message Flag {
@@ -44,7 +29,7 @@ message Flag {
 }
 
 message LWWRegister {
-  required int64 timestamp = 1;
+  required sint64 timestamp = 1;
   required UniqueAddress node = 2;
   required OtherMessage state = 3;
 }

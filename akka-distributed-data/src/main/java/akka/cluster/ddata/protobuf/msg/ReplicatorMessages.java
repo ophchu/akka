@@ -26,23 +26,23 @@ public final class ReplicatorMessages {
     com.google.protobuf.ByteString
         getKeyBytes();
 
-    // required int32 consistency = 2;
+    // required sint32 consistency = 2;
     /**
-     * <code>required int32 consistency = 2;</code>
+     * <code>required sint32 consistency = 2;</code>
      */
     boolean hasConsistency();
     /**
-     * <code>required int32 consistency = 2;</code>
+     * <code>required sint32 consistency = 2;</code>
      */
     int getConsistency();
 
-    // required int32 timeout = 3;
+    // required uint32 timeout = 3;
     /**
-     * <code>required int32 timeout = 3;</code>
+     * <code>required uint32 timeout = 3;</code>
      */
     boolean hasTimeout();
     /**
-     * <code>required int32 timeout = 3;</code>
+     * <code>required uint32 timeout = 3;</code>
      */
     int getTimeout();
 
@@ -118,12 +118,12 @@ public final class ReplicatorMessages {
             }
             case 16: {
               bitField0_ |= 0x00000002;
-              consistency_ = input.readInt32();
+              consistency_ = input.readSInt32();
               break;
             }
             case 24: {
               bitField0_ |= 0x00000004;
-              timeout_ = input.readInt32();
+              timeout_ = input.readUInt32();
               break;
             }
             case 34: {
@@ -222,33 +222,33 @@ public final class ReplicatorMessages {
       }
     }
 
-    // required int32 consistency = 2;
+    // required sint32 consistency = 2;
     public static final int CONSISTENCY_FIELD_NUMBER = 2;
     private int consistency_;
     /**
-     * <code>required int32 consistency = 2;</code>
+     * <code>required sint32 consistency = 2;</code>
      */
     public boolean hasConsistency() {
       return ((bitField0_ & 0x00000002) == 0x00000002);
     }
     /**
-     * <code>required int32 consistency = 2;</code>
+     * <code>required sint32 consistency = 2;</code>
      */
     public int getConsistency() {
       return consistency_;
     }
 
-    // required int32 timeout = 3;
+    // required uint32 timeout = 3;
     public static final int TIMEOUT_FIELD_NUMBER = 3;
     private int timeout_;
     /**
-     * <code>required int32 timeout = 3;</code>
+     * <code>required uint32 timeout = 3;</code>
      */
     public boolean hasTimeout() {
       return ((bitField0_ & 0x00000004) == 0x00000004);
     }
     /**
-     * <code>required int32 timeout = 3;</code>
+     * <code>required uint32 timeout = 3;</code>
      */
     public int getTimeout() {
       return timeout_;
@@ -316,10 +316,10 @@ public final class ReplicatorMessages {
         output.writeBytes(1, getKeyBytes());
       }
       if (((bitField0_ & 0x00000002) == 0x00000002)) {
-        output.writeInt32(2, consistency_);
+        output.writeSInt32(2, consistency_);
       }
       if (((bitField0_ & 0x00000004) == 0x00000004)) {
-        output.writeInt32(3, timeout_);
+        output.writeUInt32(3, timeout_);
       }
       if (((bitField0_ & 0x00000008) == 0x00000008)) {
         output.writeMessage(4, request_);
@@ -339,11 +339,11 @@ public final class ReplicatorMessages {
       }
       if (((bitField0_ & 0x00000002) == 0x00000002)) {
         size += com.google.protobuf.CodedOutputStream
-          .computeInt32Size(2, consistency_);
+          .computeSInt32Size(2, consistency_);
       }
       if (((bitField0_ & 0x00000004) == 0x00000004)) {
         size += com.google.protobuf.CodedOutputStream
-          .computeInt32Size(3, timeout_);
+          .computeUInt32Size(3, timeout_);
       }
       if (((bitField0_ & 0x00000008) == 0x00000008)) {
         size += com.google.protobuf.CodedOutputStream
@@ -675,22 +675,22 @@ public final class ReplicatorMessages {
         return this;
       }
 
-      // required int32 consistency = 2;
+      // required sint32 consistency = 2;
       private int consistency_ ;
       /**
-       * <code>required int32 consistency = 2;</code>
+       * <code>required sint32 consistency = 2;</code>
        */
       public boolean hasConsistency() {
         return ((bitField0_ & 0x00000002) == 0x00000002);
       }
       /**
-       * <code>required int32 consistency = 2;</code>
+       * <code>required sint32 consistency = 2;</code>
        */
       public int getConsistency() {
         return consistency_;
       }
       /**
-       * <code>required int32 consistency = 2;</code>
+       * <code>required sint32 consistency = 2;</code>
        */
       public Builder setConsistency(int value) {
         bitField0_ |= 0x00000002;
@@ -699,7 +699,7 @@ public final class ReplicatorMessages {
         return this;
       }
       /**
-       * <code>required int32 consistency = 2;</code>
+       * <code>required sint32 consistency = 2;</code>
        */
       public Builder clearConsistency() {
         bitField0_ = (bitField0_ & ~0x00000002);
@@ -708,22 +708,22 @@ public final class ReplicatorMessages {
         return this;
       }
 
-      // required int32 timeout = 3;
+      // required uint32 timeout = 3;
       private int timeout_ ;
       /**
-       * <code>required int32 timeout = 3;</code>
+       * <code>required uint32 timeout = 3;</code>
        */
       public boolean hasTimeout() {
         return ((bitField0_ & 0x00000004) == 0x00000004);
       }
       /**
-       * <code>required int32 timeout = 3;</code>
+       * <code>required uint32 timeout = 3;</code>
        */
       public int getTimeout() {
         return timeout_;
       }
       /**
-       * <code>required int32 timeout = 3;</code>
+       * <code>required uint32 timeout = 3;</code>
        */
       public Builder setTimeout(int value) {
         bitField0_ |= 0x00000004;
@@ -732,7 +732,7 @@ public final class ReplicatorMessages {
         return this;
       }
       /**
-       * <code>required int32 timeout = 3;</code>
+       * <code>required uint32 timeout = 3;</code>
        */
       public Builder clearTimeout() {
         bitField0_ = (bitField0_ & ~0x00000004);
@@ -12104,13 +12104,13 @@ public final class ReplicatorMessages {
      */
     akka.cluster.ddata.protobuf.msg.ReplicatorMessages.AddressOrBuilder getAddressOrBuilder();
 
-    // required uint32 uid = 2;
+    // required sfixed32 uid = 2;
     /**
-     * <code>required uint32 uid = 2;</code>
+     * <code>required sfixed32 uid = 2;</code>
      */
     boolean hasUid();
     /**
-     * <code>required uint32 uid = 2;</code>
+     * <code>required sfixed32 uid = 2;</code>
      */
     int getUid();
   }
@@ -12178,9 +12178,9 @@ public final class ReplicatorMessages {
               bitField0_ |= 0x00000001;
               break;
             }
-            case 16: {
+            case 21: {
               bitField0_ |= 0x00000002;
-              uid_ = input.readUInt32();
+              uid_ = input.readSFixed32();
               break;
             }
           }
@@ -12245,17 +12245,17 @@ public final class ReplicatorMessages {
       return address_;
     }
 
-    // required uint32 uid = 2;
+    // required sfixed32 uid = 2;
     public static final int UID_FIELD_NUMBER = 2;
     private int uid_;
     /**
-     * <code>required uint32 uid = 2;</code>
+     * <code>required sfixed32 uid = 2;</code>
      */
     public boolean hasUid() {
       return ((bitField0_ & 0x00000002) == 0x00000002);
     }
     /**
-     * <code>required uint32 uid = 2;</code>
+     * <code>required sfixed32 uid = 2;</code>
      */
     public int getUid() {
       return uid_;
@@ -12293,7 +12293,7 @@ public final class ReplicatorMessages {
         output.writeMessage(1, address_);
       }
       if (((bitField0_ & 0x00000002) == 0x00000002)) {
-        output.writeUInt32(2, uid_);
+        output.writeSFixed32(2, uid_);
       }
       getUnknownFields().writeTo(output);
     }
@@ -12310,7 +12310,7 @@ public final class ReplicatorMessages {
       }
       if (((bitField0_ & 0x00000002) == 0x00000002)) {
         size += com.google.protobuf.CodedOutputStream
-          .computeUInt32Size(2, uid_);
+          .computeSFixed32Size(2, uid_);
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -12655,22 +12655,22 @@ public final class ReplicatorMessages {
         return addressBuilder_;
       }
 
-      // required uint32 uid = 2;
+      // required sfixed32 uid = 2;
       private int uid_ ;
       /**
-       * <code>required uint32 uid = 2;</code>
+       * <code>required sfixed32 uid = 2;</code>
        */
       public boolean hasUid() {
         return ((bitField0_ & 0x00000002) == 0x00000002);
       }
       /**
-       * <code>required uint32 uid = 2;</code>
+       * <code>required sfixed32 uid = 2;</code>
        */
       public int getUid() {
         return uid_;
       }
       /**
-       * <code>required uint32 uid = 2;</code>
+       * <code>required sfixed32 uid = 2;</code>
        */
       public Builder setUid(int value) {
         bitField0_ |= 0x00000002;
@@ -12679,7 +12679,7 @@ public final class ReplicatorMessages {
         return this;
       }
       /**
-       * <code>required uint32 uid = 2;</code>
+       * <code>required sfixed32 uid = 2;</code>
        */
       public Builder clearUid() {
         bitField0_ = (bitField0_ & ~0x00000002);
@@ -14460,7 +14460,7 @@ public final class ReplicatorMessages {
     java.lang.String[] descriptorData = {
       "\n\030ReplicatorMessages.proto\022\022akka.cluster" +
       ".ddata\"k\n\003Get\022\013\n\003key\030\001 \002(\t\022\023\n\013consistenc" +
-      "y\030\002 \002(\005\022\017\n\007timeout\030\003 \002(\005\0221\n\007request\030\004 \001(" +
+      "y\030\002 \002(\021\022\017\n\007timeout\030\003 \002(\r\0221\n\007request\030\004 \001(" +
       "\0132 .akka.cluster.ddata.OtherMessage\"|\n\nG" +
       "etSuccess\022\013\n\003key\030\001 \002(\t\022.\n\004data\030\002 \002(\0132 .a" +
       "kka.cluster.ddata.OtherMessage\0221\n\007reques" +
@@ -14494,7 +14494,7 @@ public final class ReplicatorMessages {
       "\010envelope\030\002 \002(\0132 .akka.cluster.ddata.Dat" +
       "aEnvelope\"J\n\rUniqueAddress\022,\n\007address\030\001 " +
       "\002(\0132\033.akka.cluster.ddata.Address\022\013\n\003uid\030" +
-      "\002 \002(\r\")\n\007Address\022\020\n\010hostname\030\001 \002(\t\022\014\n\004po" +
+      "\002 \002(\017\")\n\007Address\022\020\n\010hostname\030\001 \002(\t\022\014\n\004po" +
       "rt\030\002 \002(\r\"V\n\014OtherMessage\022\027\n\017enclosedMess" +
       "age\030\001 \002(\014\022\024\n\014serializerId\030\002 \002(\005\022\027\n\017messa" +
       "geManifest\030\004 \001(\014\"\036\n\nStringGSet\022\020\n\010elemen",
