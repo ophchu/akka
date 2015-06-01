@@ -4,7 +4,6 @@
 package akka.cluster.ddata
 
 import java.security.MessageDigest
-
 import scala.annotation.tailrec
 import scala.collection.immutable
 import scala.collection.immutable.Queue
@@ -16,7 +15,6 @@ import scala.util.Failure
 import scala.util.Success
 import scala.util.Try
 import scala.util.control.NoStackTrace
-
 import akka.actor.Actor
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
@@ -37,6 +35,7 @@ import akka.serialization.SerializationExtension
 import akka.util.ByteString
 import com.typesafe.config.Config
 import akka.japi.function.{ Function ⇒ JFunction }
+import akka.dispatch.Dispatchers
 
 object ReplicatorSettings {
 
@@ -52,11 +51,16 @@ object ReplicatorSettings {
    * the default configuration `akka.cluster.distributed-data`.
    */
   def apply(config: Config): ReplicatorSettings = {
+    val dispatcher = config.getString("use-dispatcher") match {
+      case "" ⇒ Dispatchers.DefaultDispatcherId
+      case id ⇒ id
+    }
     new ReplicatorSettings(
       role = roleOption(config.getString("role")),
       gossipInterval = config.getDuration("gossip-interval", MILLISECONDS).millis,
       notifySubscribersInterval = config.getDuration("notify-subscribers-interval", MILLISECONDS).millis,
       maxDeltaElements = config.getInt("max-delta-elements"),
+      dispatcher = dispatcher,
       pruningInterval = config.getDuration("pruning-interval", MILLISECONDS).millis,
       maxPruningDissemination = config.getDuration("max-pruning-dissemination", MILLISECONDS).millis)
   }
@@ -77,6 +81,8 @@ object ReplicatorSettings {
  * @param maxDeltaElements Maximum number of entries to transfer in one
  *   gossip message when synchronizing the replicas. Next chunk will be
  *   transferred in next round of gossip.
+ * @param dispatcher Id of the dispatcher to use for Replicator actors. If not
+ *   specified (`""`) the default dispatcher is used.
  * @param pruningInterval How often the Replicator checks for pruning of
  *   data associated with removed cluster nodes.
  * @param maxPruningDissemination How long time it takes (worst case) to spread
@@ -90,6 +96,7 @@ final class ReplicatorSettings(
   val gossipInterval: FiniteDuration,
   val notifySubscribersInterval: FiniteDuration,
   val maxDeltaElements: Int,
+  val dispatcher: String,
   val pruningInterval: FiniteDuration,
   val maxPruningDissemination: FiniteDuration) {
 
@@ -106,6 +113,14 @@ final class ReplicatorSettings(
   def withMaxDeltaElements(maxDeltaElements: Int): ReplicatorSettings =
     copy(maxDeltaElements = maxDeltaElements)
 
+  def withDispatcher(dispatcher: String): ReplicatorSettings = {
+    val d = dispatcher match {
+      case "" ⇒ Dispatchers.DefaultDispatcherId
+      case id ⇒ id
+    }
+    copy(dispatcher = d)
+  }
+
   def withPruning(pruningInterval: FiniteDuration, maxPruningDissemination: FiniteDuration): ReplicatorSettings =
     copy(pruningInterval = pruningInterval, maxPruningDissemination = maxPruningDissemination)
 
@@ -114,9 +129,11 @@ final class ReplicatorSettings(
     gossipInterval: FiniteDuration = gossipInterval,
     notifySubscribersInterval: FiniteDuration = notifySubscribersInterval,
     maxDeltaElements: Int = maxDeltaElements,
+    dispatcher: String = dispatcher,
     pruningInterval: FiniteDuration = pruningInterval,
     maxPruningDissemination: FiniteDuration = maxPruningDissemination): ReplicatorSettings =
-    new ReplicatorSettings(role, gossipInterval, notifySubscribersInterval, maxDeltaElements, pruningInterval, maxPruningDissemination)
+    new ReplicatorSettings(role, gossipInterval, notifySubscribersInterval, maxDeltaElements, dispatcher,
+      pruningInterval, maxPruningDissemination)
 }
 
 object Replicator {
@@ -125,7 +142,7 @@ object Replicator {
    * Factory method for the [[akka.actor.Props]] of the [[Replicator]] actor.
    */
   def props(settings: ReplicatorSettings): Props =
-    Props(new Replicator(settings)).withDeploy(Deploy.local)
+    Props(new Replicator(settings)).withDeploy(Deploy.local).withDispatcher(settings.dispatcher)
 
   sealed trait ReadConsistency {
     def timeout: FiniteDuration
@@ -851,7 +868,8 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
       }
       replyTo ! reply
     } else
-      context.actorOf(ReadAggregator.props(key, consistency, req, nodes, localValue, replyTo))
+      context.actorOf(ReadAggregator.props(key, consistency, req, nodes, localValue, replyTo)
+        .withDispatcher(context.props.dispatcher))
   }
 
   def isLocalGet(readConsistency: ReadConsistency): Boolean =
@@ -887,7 +905,8 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
           if (isLocalUpdate(writeConsistency))
             replyTo ! UpdateSuccess(key, req)
           else
-            context.actorOf(WriteAggregator.props(key, envelope, writeConsistency, req, nodes, replyTo))
+            context.actorOf(WriteAggregator.props(key, envelope, writeConsistency, req, nodes, replyTo)
+              .withDispatcher(context.props.dispatcher))
         case Failure(e: DataDeleted) ⇒
           log.debug("Received Update for deleted key [{}]", key)
           replyTo ! e
@@ -904,7 +923,8 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
       // is completed.
       log.debug("Received Update for key [{}], with readConsistency [{}]", key, readConsistency)
       val req2 = Some(UpdateInProgress(Update(key, readConsistency, writeConsistency, req)(modify), replyTo))
-      context.actorOf(ReadAggregator.props(key, readConsistency, req2, nodes, localValue, self))
+      context.actorOf(ReadAggregator.props(key, readConsistency, req2, nodes, localValue, self)
+        .withDispatcher(context.props.dispatcher))
       if (updateInProgressBuffer.isEmpty)
         context.become(updateInProgressReceive)
       if (!updateInProgressBuffer.contains(key))
@@ -1019,7 +1039,8 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
         if (isLocalUpdate(consistency))
           replyTo ! DeleteSuccess(key)
         else
-          context.actorOf(WriteAggregator.props(key, DeletedEnvelope, consistency, None, nodes, replyTo))
+          context.actorOf(WriteAggregator.props(key, DeletedEnvelope, consistency, None, nodes, replyTo)
+            .withDispatcher(context.props.dispatcher))
     }
   }
 
