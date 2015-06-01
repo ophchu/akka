@@ -7,7 +7,6 @@ package akka.persistence
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.immutable
 import scala.util.control.NonFatal
-import akka.actor.ActorKilledException
 import akka.actor.Stash
 import akka.actor.StashFactory
 import akka.event.Logging
@@ -104,13 +103,31 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
   private[akka] def onReplayFailure(cause: Throwable, event: Option[Any]): Unit = {
     event match {
       case Some(evt) ⇒
-        log.error(cause, "Exception in receiveRecover when replaying event [{}] with sequence number [{}] for " +
+        log.error(cause, "Exception in receiveRecover when replaying event type [{}] with sequence number [{}] for " +
           "persistenceId [{}].", evt.getClass.getName, lastSequenceNr, persistenceId)
       case None ⇒
         log.error(cause, "Persistence failure when replaying events for persistenceId [{}]. " +
           "Last known sequence number [{}]", persistenceId, lastSequenceNr)
     }
     context.stop(self)
+  }
+
+  /**
+   * Called when persist fails. Logs the error.
+   * Subclass may override to customize logging and for example send negative
+   * acknowledgment to sender.
+   *
+   * The actor is always stopped after this method has been invoked.
+   *
+   * Note that the event may or may not have been saved, depending on the type of
+   * failure.
+   *
+   * @param cause failure cause.
+   * @param event the event that was to be persisted
+   */
+  protected def onPersistFailure(cause: Throwable, event: Any, seqNr: Long): Unit = {
+    log.error(cause, "Failed to persist event type [{}] with sequence number [{}] for persistenceId [{}].",
+      event.getClass.getName, seqNr, persistenceId)
   }
 
   /**
@@ -232,9 +249,12 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
    * Within an event handler, applications usually update persistent actor state using persisted event
    * data, notify listeners and reply to command senders.
    *
-   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
-   * and the default supervision strategy will stop the persistent actor.
-   * This can be customized by defining `supervisorStrategy` in parent actor.
+   * If persistence of an event fails, [[#onPersistFailure]] will be invoked and the actor will
+   * unconditionally be stopped. The reason that it cannot resume when persist fails is that it
+   * is unknown if the even was actually persisted or not, and therefore it is in an inconsistent
+   * state. Restarting on persistent failures will most likely fail anyway, since the journal
+   * is probably unavailable. It is better to stop the actor and after a back-off timeout start
+   * it again.
    *
    * @param event event to be persisted
    * @param handler handler for each persisted `event`
@@ -269,9 +289,12 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
    * event is the sender of the corresponding command. This means that one can reply to a command
    * sender within an event `handler`.
    *
-   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
-   * and the default supervision strategy will stop the persistent actor.
-   * This can be customized by defining `supervisorStrategy` in parent actor.
+   * If persistence of an event fails, [[#onPersistFailure]] will be invoked and the actor will
+   * unconditionally be stopped. The reason that it cannot resume when persist fails is that it
+   * is unknown if the even was actually persisted or not, and therefore it is in an inconsistent
+   * state. Restarting on persistent failures will most likely fail anyway, since the journal
+   * is probably unavailable. It is better to stop the actor and after a back-off timeout start
+   * it again.
    *
    * @param event event to be persisted
    * @param handler handler for each persisted `event`
@@ -303,8 +326,7 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
    *
    * If there are no pending persist handler calls, the handler will be called immediately.
    *
-   * If persistence of an earlier event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
-   * and the default supervision strategy will stop the persistent actor, and the `handler`
+   * If persistence of an earlier event fails, the persistent actor will stop, and the `handler`
    * will not be run.
    *
    * @param event event to be handled in the future, when preceding persist operations have been processes
@@ -499,10 +521,7 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
         // while message is in flight, in that case the handler has already been discarded
         if (id == instanceId) {
           onWriteMessageComplete(err = false)
-          val errorMsg = "PersistentActor killed after persistence failure " +
-            s"(persistent id = [${persistenceId}], sequence nr = [${p.sequenceNr}], payload class = [${p.payload.getClass.getName}]). " +
-            "Persistence failure was caused by: " + cause
-          throw new ActorKilledException(errorMsg)
+          try onPersistFailure(cause, p.payload, p.sequenceNr) finally context.stop(self)
         }
       case LoopMessageSuccess(l, id) ⇒
         // instanceId mismatch can happen for persistAsync and defer in case of actor restart
@@ -513,7 +532,8 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
             onWriteMessageComplete(err = false)
           } catch { case NonFatal(e) ⇒ onWriteMessageComplete(err = true); throw e }
         }
-      case WriteMessagesSuccessful | WriteMessagesFailed(_) ⇒ // FIXME PN: WriteMessagesFailed?
+      case WriteMessagesSuccessful | WriteMessagesFailed(_) ⇒
+        // FIXME PN: WriteMessagesFailed?
         if (journalBatch.isEmpty) writeInProgress = false else flushJournalBatch()
     }
 

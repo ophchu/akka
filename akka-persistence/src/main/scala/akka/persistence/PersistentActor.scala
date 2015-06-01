@@ -117,9 +117,12 @@ abstract class UntypedPersistentActor extends UntypedActor with Eventsourced wit
    * Within an event handler, applications usually update persistent actor state using persisted event
    * data, notify listeners and reply to command senders.
    *
-   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
-   * and the default supervision strategy will stop the persistent actor.
-   * This can be customized by defining `supervisorStrategy` in parent actor.
+   * If persistence of an event fails, [[#onPersistFailure]] will be invoked and the actor will
+   * unconditionally be stopped. The reason that it cannot resume when persist fails is that it
+   * is unknown if the even was actually persisted or not, and therefore it is in an inconsistent
+   * state. Restarting on persistent failures will most likely fail anyway, since the journal
+   * is probably unavailable. It is better to stop the actor and after a back-off timeout start
+   * it again.
    *
    * @param event event to be persisted.
    * @param handler handler for each persisted `event`
@@ -151,9 +154,12 @@ abstract class UntypedPersistentActor extends UntypedActor with Eventsourced wit
    * event is the sender of the corresponding command. This means that one can reply to a command
    * sender within an event `handler`.
    *
-   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
-   * and the default supervision strategy will stop the persistent actor.
-   * This can be customized by defining `supervisorStrategy` in parent actor.
+   * If persistence of an event fails, [[#onPersistFailure]] will be invoked and the actor will
+   * unconditionally be stopped. The reason that it cannot resume when persist fails is that it
+   * is unknown if the even was actually persisted or not, and therefore it is in an inconsistent
+   * state. Restarting on persistent failures will most likely fail anyway, since the journal
+   * is probably unavailable. It is better to stop the actor and after a back-off timeout start
+   * it again.
    *
    * @param event event to be persisted
    * @param handler handler for each persisted `event`
@@ -183,8 +189,7 @@ abstract class UntypedPersistentActor extends UntypedActor with Eventsourced wit
    *
    * If there are no pending persist handler calls, the handler will be called immediately.
    *
-   * If persistence of an earlier event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
-   * and the default supervision strategy will stop the persistent actor, and the `deferAsync` callback
+   * If persistence of an earlier event fails, the persistent actor will stop, and the `handler`
    * will not be run.
    *
    * @param event event to be handled in the future, when preceding persist operations have been processes
@@ -239,9 +244,12 @@ abstract class AbstractPersistentActor extends AbstractActor with PersistentActo
    * Within an event handler, applications usually update persistent actor state using persisted event
    * data, notify listeners and reply to command senders.
    *
-   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
-   * and the default supervision strategy will stop the persistent actor.
-   * This can be customized by defining `supervisorStrategy` in parent actor.
+   * If persistence of an event fails, [[#onPersistFailure]] will be invoked and the actor will
+   * unconditionally be stopped. The reason that it cannot resume when persist fails is that it
+   * is unknown if the even was actually persisted or not, and therefore it is in an inconsistent
+   * state. Restarting on persistent failures will most likely fail anyway, since the journal
+   * is probably unavailable. It is better to stop the actor and after a back-off timeout start
+   * it again.
    *
    * @param event event to be persisted.
    * @param handler handler for each persisted `event`
@@ -268,9 +276,12 @@ abstract class AbstractPersistentActor extends AbstractActor with PersistentActo
    * call to `persistAsync` and executing it's `handler`. This asynchronous, non-stashing, version of
    * of persist should be used when you favor throughput over the strict ordering guarantees that `persist` guarantees.
    *
-   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
-   * and the default supervision strategy will stop the persistent actor.
-   * This can be customized by defining `supervisorStrategy` in parent actor.
+   * If persistence of an event fails, [[#onPersistFailure]] will be invoked and the actor will
+   * unconditionally be stopped. The reason that it cannot resume when persist fails is that it
+   * is unknown if the even was actually persisted or not, and therefore it is in an inconsistent
+   * state. Restarting on persistent failures will most likely fail anyway, since the journal
+   * is probably unavailable. It is better to stop the actor and after a back-off timeout start
+   * it again.
    *
    * @param event event to be persisted
    * @param handler handler for each persisted `event`
@@ -300,8 +311,7 @@ abstract class AbstractPersistentActor extends AbstractActor with PersistentActo
    *
    * If there are no pending persist handler calls, the handler will be called immediately.
    *
-   * If persistence of an earlier event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
-   * and the default supervision strategy will stop the persistent actor, and the `handler`
+   * If persistence of an earlier event fails, the persistent actor will stop, and the `handler`
    * will not be run.
    *
    * @param event event to be handled in the future, when preceding persist operations have been processes

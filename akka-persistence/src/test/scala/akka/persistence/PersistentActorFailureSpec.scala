@@ -67,9 +67,6 @@ object PersistentActorFailureSpec {
 
   class Supervisor(testActor: ActorRef) extends Actor {
     override def supervisorStrategy = OneForOneStrategy(loggingEnabled = false) {
-      case e: ActorKilledException ⇒
-        testActor ! e
-        SupervisorStrategy.Stop
       case e ⇒
         testActor ! e
         SupervisorStrategy.Restart
@@ -159,21 +156,23 @@ class PersistentActorFailureSpec extends AkkaSpec(PersistenceSpec.config("inmem"
       watch(ref)
       expectTerminated(ref)
     }
-    "throw ActorKilledException if persist fails" in {
+    "stop if persist fails" in {
       system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[Behavior1PersistentActor], name)
       val persistentActor = expectMsgType[ActorRef]
+      watch(persistentActor)
       persistentActor ! Cmd("wrong")
-      expectMsgType[ActorKilledException]
+      expectTerminated(persistentActor)
     }
-    "throw ActorKilledException if persistAsync fails" in {
+    "stop if persistAsync fails" in {
       system.actorOf(Props(classOf[Supervisor], testActor)) ! Props(classOf[AsyncPersistPersistentActor], name)
       val persistentActor = expectMsgType[ActorRef]
       persistentActor ! Cmd("a")
+      watch(persistentActor)
       expectMsg("a") // reply before persistAsync
       expectMsg("a-1") // reply after successful persistAsync
       persistentActor ! Cmd("wrong")
       expectMsg("wrong") // reply before persistAsync
-      expectMsgType[ActorKilledException]
+      expectTerminated(persistentActor)
     }
     "stop if receiveRecover fails" in {
       prepareFailingRecovery()
@@ -183,43 +182,6 @@ class PersistentActorFailureSpec extends AkkaSpec(PersistenceSpec.config("inmem"
       val ref = expectMsgType[ActorRef]
       watch(ref)
       expectTerminated(ref)
-    }
-    "support resume after persist failure" in {
-      system.actorOf(Props(classOf[ResumingSupervisor], testActor)) ! Props(classOf[Behavior1PersistentActor], name)
-      val persistentActor = expectMsgType[ActorRef]
-      persistentActor ! Cmd("a")
-      persistentActor ! Cmd("wrong")
-      persistentActor ! Cmd("b")
-      // Behavior1PersistentActor persists 2 events per Cmd,
-      // and therefore 2 exceptions from supervisor
-      expectMsgType[ActorKilledException]
-      expectMsgType[ActorKilledException]
-      persistentActor ! Cmd("c")
-      persistentActor ! GetState
-      expectMsg(List("a-1", "a-2", "b-1", "b-2", "c-1", "c-2"))
-    }
-    "support resume when persist followed by exception" in {
-      system.actorOf(Props(classOf[ResumingSupervisor], testActor)) ! Props(classOf[ThrowingActor1], name)
-      val persistentActor = expectMsgType[ActorRef]
-      persistentActor ! Cmd("a")
-      persistentActor ! Cmd("err")
-      persistentActor ! Cmd("b")
-      expectMsgType[SimulatedException] // from supervisor
-      persistentActor ! Cmd("c")
-      persistentActor ! GetState
-      expectMsg(List("a", "err", "b", "c"))
-    }
-    "support resume when persist handler throws exception" in {
-      system.actorOf(Props(classOf[ResumingSupervisor], testActor)) ! Props(classOf[ThrowingActor2], name)
-      val persistentActor = expectMsgType[ActorRef]
-      persistentActor ! Cmd("a")
-      persistentActor ! Cmd("b")
-      persistentActor ! Cmd("err")
-      persistentActor ! Cmd("c")
-      expectMsgType[SimulatedException] // from supervisor
-      persistentActor ! Cmd("d")
-      persistentActor ! GetState
-      expectMsg(List("a", "b", "c", "d"))
     }
 
   }

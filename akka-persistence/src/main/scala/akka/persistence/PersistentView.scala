@@ -8,7 +8,6 @@ import scala.concurrent.duration._
 import scala.util.control.NonFatal
 import akka.actor.AbstractActor
 import akka.actor.Actor
-import akka.actor.ActorKilledException
 import akka.actor.Cancellable
 import akka.actor.Stash
 import akka.actor.StashFactory
