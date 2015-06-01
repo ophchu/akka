@@ -43,7 +43,7 @@ object ORSet {
    * INTERNAL API
    * Subtract the `vvector` from the `dot`.
    * What this means is that any (node, version) pair in
-   * `dot` that is <= an entry in `vvector` is removed from `dot`.
+   * `dot` that is &lt;= an entry in `vvector` is removed from `dot`.
    * Example [{a, 3}, {b, 2}, {d, 14}, {g, 22}] -
    *         [{a, 4}, {b, 1}, {c, 1}, {d, 14}, {e, 5}, {f, 2}] =
    *         [{b, 2}, {g, 22}]
@@ -125,9 +125,9 @@ object ORSet {
  * riak_dt_orswot</a>.
  *
  * The ORSet has a version vector that is incremented when an element is added to
- * the set. The `node -> count` pair for that increment is stored against the
+ * the set. The `node -&gt; count` pair for that increment is stored against the
  * element as its "birth dot". Every time the element is re-added to the set,
- * its "birth dot" is updated to that of the `node -> count` version vector entry
+ * its "birth dot" is updated to that of the `node -&gt; count` version vector entry
  * resulting from the add. When an element is removed, we simply drop it, no tombstones.
  *
  * When an element exists in replica A and not replica B, is it because A added

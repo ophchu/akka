@@ -47,6 +47,6 @@ class DistributedData(system: ExtendedActorSystem) extends Extension {
       system.deadLetters
     } else {
       val name = config.getString("name")
-      system.actorOf(Replicator.props(settings), name)
+      system.systemActorOf(Replicator.props(settings), name)
     }
 }

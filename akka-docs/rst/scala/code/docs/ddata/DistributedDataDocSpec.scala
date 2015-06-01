@@ -110,8 +110,8 @@ class DistributedDataDocSpec extends AkkaSpec("""
     val writeTo3 = WriteTo(n = 3, timeout = 1.second)
     replicator ! Update("set1", GSet.empty[String], writeTo3)(_ + "hello")
 
-    val writeQuorum = WriteQuorum(timeout = 5.seconds)
-    replicator ! Update("set2", ORSet.empty[String], writeQuorum)(_ + "hello")
+    val writeMajority = WriteMajority(timeout = 5.seconds)
+    replicator ! Update("set2", ORSet.empty[String], writeMajority)(_ + "hello")
 
     val writeAll = WriteAll(timeout = 5.seconds)
     replicator ! Update("active", Flag.empty, writeAll)(_.switchOn)
@@ -143,11 +143,11 @@ class DistributedDataDocSpec extends AkkaSpec("""
     implicit val cluster = Cluster(system)
     val replicator = DistributedData(system).replicator
 
-    val readQuorum = ReadQuorum(timeout = 2.seconds)
-    val writeQuorum = WriteQuorum(timeout = 3.seconds)
+    val readMajority = ReadMajority(timeout = 2.seconds)
+    val writeMajority = WriteMajority(timeout = 3.seconds)
     val newElement = "a345"
     val update =
-      Update("set3", ORSet.empty[String], readQuorum, writeQuorum) { currentSet =>
+      Update("set3", ORSet.empty[String], readMajority, writeMajority) { currentSet =>
         if (currentSet.size >= 10) {
           val removeElements =
             currentSet.elements.toSeq.sorted.take(currentSet.size - 9)
@@ -164,9 +164,9 @@ class DistributedDataDocSpec extends AkkaSpec("""
       //#read-update-response
       case UpdateSuccess("set3", req) => // ok
       case ReadFailure("set3", req)   =>
-      // read from quorum falied within 2.seconds
+      // read from majority falied within 2.seconds
       case UpdateTimeout("set3", req) =>
-      // write to quorum failed within 3.seconds
+      // write to majority failed within 3.seconds
       //#read-update-response
       case unexpected                 => fail("Unexpected response: " + unexpected)
     }
@@ -209,8 +209,8 @@ class DistributedDataDocSpec extends AkkaSpec("""
     val readFrom3 = ReadFrom(n = 3, timeout = 1.second)
     replicator ! Get("set1", readFrom3)
 
-    val readQuorum = ReadQuorum(timeout = 5.seconds)
-    replicator ! Get("set2", readQuorum)
+    val readMajority = ReadMajority(timeout = 5.seconds)
+    replicator ! Get("set2", readMajority)
 
     val readAll = ReadAll(timeout = 5.seconds)
     replicator ! Get("active", readAll)
@@ -293,8 +293,8 @@ class DistributedDataDocSpec extends AkkaSpec("""
 
     replicator ! Delete("counter1", WriteLocal)
 
-    val writeQuorum = WriteQuorum(timeout = 5.seconds)
-    replicator ! Delete("set2", writeQuorum)
+    val writeMajority = WriteMajority(timeout = 5.seconds)
+    replicator ! Delete("set2", writeMajority)
     //#delete
   }
 

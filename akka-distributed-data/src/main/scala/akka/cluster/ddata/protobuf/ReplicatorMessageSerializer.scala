@@ -115,10 +115,10 @@ class ReplicatorMessageSerializer(val system: ExtendedActorSystem) extends Seria
 
   private def getToProto(get: Get): dm.Get = {
     val consistencyValue = get.consistency match {
-      case ReadLocal      ⇒ 1
-      case ReadFrom(n, _) ⇒ n
-      case _: ReadQuorum  ⇒ 0
-      case _: ReadAll     ⇒ -1
+      case ReadLocal       ⇒ 1
+      case ReadFrom(n, _)  ⇒ n
+      case _: ReadMajority ⇒ 0
+      case _: ReadAll      ⇒ -1
     }
 
     val b = dm.Get.newBuilder().
@@ -135,7 +135,7 @@ class ReplicatorMessageSerializer(val system: ExtendedActorSystem) extends Seria
     val request = if (get.hasRequest()) Some(otherMessageFromProto(get.getRequest)) else None
     val timeout = Duration(get.getTimeout, TimeUnit.MILLISECONDS)
     val consistency = get.getConsistency match {
-      case 0  ⇒ ReadQuorum(timeout)
+      case 0  ⇒ ReadMajority(timeout)
       case -1 ⇒ ReadAll(timeout)
       case 1  ⇒ ReadLocal
       case n  ⇒ ReadFrom(n, timeout)

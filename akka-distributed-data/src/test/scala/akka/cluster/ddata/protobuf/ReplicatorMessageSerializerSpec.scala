@@ -51,7 +51,7 @@ class ReplicatorMessageSerializerSpec extends TestKit(ActorSystem("ReplicatorMes
       val data1 = GSet() + "a"
 
       checkSerialization(Get("A", ReadLocal))
-      checkSerialization(Get("A", ReadQuorum(2.seconds), Some("x")))
+      checkSerialization(Get("A", ReadMajority(2.seconds), Some("x")))
       checkSerialization(GetSuccess("A", data1, None))
       checkSerialization(GetSuccess("A", data1, Some("x")))
       checkSerialization(NotFound("A", Some("x")))

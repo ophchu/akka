@@ -6,6 +6,7 @@ package akka.cluster.ddata
 import akka.cluster.Cluster
 import akka.cluster.UniqueAddress
 import akka.util.HashCode
+import akka.japi.function.{ Function ⇒ JFunction }
 
 object ORMap {
   private val _empty: ORMap[ReplicatedData] = new ORMap(ORSet.empty, Map.empty)
@@ -117,7 +118,7 @@ final class ORMap[A <: ReplicatedData] private[akka] (
    * If there is no current value for the `key` the `initial` value will be
    * passed to the `modify` function.
    */
-  def updated(node: Cluster, key: String, initial: A, modify: akka.japi.Function[A, A]): ORMap[A] =
+  def updated(node: Cluster, key: String, initial: A, modify: akka.japi.function.Function[A, A]): ORMap[A] =
     updated(node, key, initial)(value ⇒ modify.apply(value))
 
   /**
@@ -155,23 +156,23 @@ final class ORMap[A <: ReplicatedData] private[akka] (
   override def merge(that: ORMap[A]): ORMap[A] = {
     val mergedKeys = keys.merge(that.keys)
     var mergedValues = Map.empty[String, A]
-    mergedKeys.elementsMap.keysIterator.foreach {
-      case key: String ⇒
-        (this.values.get(key), that.values.get(key)) match {
-          case (Some(thisValue), Some(thatValue)) ⇒
-            if (thisValue.getClass != thatValue.getClass) {
-              val errMsg = s"Wrong type for merging [$key] in [${getClass.getName}], existing type " +
-                s"[${thisValue.getClass.getName}], got [${thatValue.getClass.getName}]"
-              throw new IllegalArgumentException(errMsg)
-            }
-            val mergedValue = thisValue.merge(thatValue.asInstanceOf[thisValue.T]).asInstanceOf[A]
-            mergedValues = mergedValues.updated(key, mergedValue)
-          case (Some(thisValue), None) ⇒
-            mergedValues = mergedValues.updated(key, thisValue)
-          case (None, Some(thatValue)) ⇒
-            mergedValues = mergedValues.updated(key, thatValue)
-          case (None, None) ⇒ throw new IllegalStateException(s"missing value for $key")
-        }
+    mergedKeys.elementsMap.keysIterator.foreach { key ⇒
+      (this.values.get(key), that.values.get(key)) match {
+        case (Some(thisValue), Some(thatValue)) ⇒
+          if (thisValue.getClass != thatValue.getClass) {
+            val errMsg = s"Wrong type for merging [$key] in [${getClass.getName}], existing type " +
+              s"[${thisValue.getClass.getName}], got [${thatValue.getClass.getName}]"
+            throw new IllegalArgumentException(errMsg)
+          }
+          // TODO can we get rid of these (safe) casts?
+          val mergedValue = thisValue.merge(thatValue.asInstanceOf[thisValue.T]).asInstanceOf[A]
+          mergedValues = mergedValues.updated(key, mergedValue)
+        case (Some(thisValue), None) ⇒
+          mergedValues = mergedValues.updated(key, thisValue)
+        case (None, Some(thatValue)) ⇒
+          mergedValues = mergedValues.updated(key, thatValue)
+        case (None, None) ⇒ throw new IllegalStateException(s"missing value for $key")
+      }
     }
 
     new ORMap(mergedKeys, mergedValues)

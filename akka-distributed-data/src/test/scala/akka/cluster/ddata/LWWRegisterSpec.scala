@@ -29,7 +29,7 @@ class LWWRegisterSpec extends WordSpec with Matchers {
     "merge by picking max timestamp" in {
       val clock = new LWWRegister.Clock[String] {
         val i = Iterator.from(100)
-        override def nextTimestamp(current: Long, value: String): Long = i.next()
+        override def apply(current: Long, value: String): Long = i.next()
       }
       val r1 = LWWRegister(node1, "A", clock)
       r1.timestamp should be(100)
@@ -45,7 +45,7 @@ class LWWRegisterSpec extends WordSpec with Matchers {
 
     "merge by picking least address when same timestamp" in {
       val clock = new LWWRegister.Clock[String] {
-        override def nextTimestamp(current: Long, value: String): Long = 100
+        override def apply(current: Long, value: String): Long = 100
       }
       val r1 = LWWRegister(node1, "A", clock)
       val r2 = LWWRegister(node2, "B", clock)

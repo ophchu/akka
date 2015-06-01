@@ -9,16 +9,17 @@ import akka.util.HashCode
 
 object LWWRegister {
 
-  abstract class Clock[A] {
+  trait Clock[A] {
     /**
      * @param currentTimestamp the current `timestamp` value of the `LWWRegister`
      * @param value the register value to set and associate with the returned timestamp
+     * @return next timestamp
      */
-    def nextTimestamp(currentTimestamp: Long, value: A): Long
+    def apply(currentTimestamp: Long, value: A): Long
   }
 
   private val _defaultClock: Clock[Any] = new Clock[Any] {
-    override def nextTimestamp(currentTimestamp: Long, value: Any): Long =
+    override def apply(currentTimestamp: Long, value: Any): Long =
       math.max(System.currentTimeMillis(), currentTimestamp + 1)
   }
 
@@ -29,7 +30,7 @@ object LWWRegister {
   def defaultClock[A]: Clock[A] = _defaultClock.asInstanceOf[Clock[A]]
 
   private val _reverseClock = new Clock[Any] {
-    override def nextTimestamp(currentTimestamp: Long, value: Any): Long =
+    override def apply(currentTimestamp: Long, value: Any): Long =
       math.min(-System.currentTimeMillis(), currentTimestamp - 1)
   }
 
@@ -43,7 +44,7 @@ object LWWRegister {
    * INTERNAL API
    */
   private[akka] def apply[A](node: UniqueAddress, initialValue: A, clock: Clock[A]): LWWRegister[A] =
-    new LWWRegister(node, initialValue, clock.nextTimestamp(0L, initialValue))
+    new LWWRegister(node, initialValue, clock(0L, initialValue))
 
   def apply[A](initialValue: A)(implicit node: Cluster, clock: Clock[A] = defaultClock[A]): LWWRegister[A] =
     apply(node.selfUniqueAddress, initialValue, clock)
@@ -141,7 +142,7 @@ final class LWWRegister[A] private[akka] (
    * INTERNAL API
    */
   private[akka] def withValue(node: UniqueAddress, value: A, clock: Clock[A]): LWWRegister[A] =
-    new LWWRegister(node, value, clock.nextTimestamp(timestamp, value))
+    new LWWRegister(node, value, clock(timestamp, value))
 
   override def merge(that: LWWRegister[A]): LWWRegister[A] =
     if (that.timestamp > this.timestamp) that

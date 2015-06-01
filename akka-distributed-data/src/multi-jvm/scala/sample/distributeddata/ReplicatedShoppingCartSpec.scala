@@ -47,8 +47,8 @@ object ShoppingCart {
   final case class LineItem(productId: String, title: String, quantity: Int)
 
   private val timeout = 3.seconds
-  private val readQuorum = ReadQuorum(timeout)
-  private val writeQuorum = WriteQuorum(timeout)
+  private val readMajority = ReadMajority(timeout)
+  private val writeMajority = WriteMajority(timeout)
 
 }
 
@@ -64,7 +64,7 @@ class ShoppingCart(userId: String) extends Actor with Stash {
   def receive = {
 
     case GetCart ⇒
-      replicator ! Get(DataKey, readQuorum, Some(sender()))
+      replicator ! Get(DataKey, readMajority, Some(sender()))
 
     case GetSuccess(DataKey, data: LWWMap[LineItem] @unchecked, Some(replyTo: ActorRef)) ⇒
       val cart = Cart(data.entries.values.toSet)
@@ -74,30 +74,30 @@ class ShoppingCart(userId: String) extends Actor with Stash {
       replyTo ! Cart(Set.empty)
 
     case GetFailure(DataKey, Some(replyTo: ActorRef)) ⇒
-      // ReadQuorum failure, try again with local read
+      // ReadMajority failure, try again with local read
       replicator ! Get(DataKey, ReadLocal, Some(replyTo))
 
     case cmd @ AddItem(item) ⇒
-      val update = Update(DataKey, LWWMap.empty[LineItem], readQuorum, writeQuorum, Some(cmd)) {
+      val update = Update(DataKey, LWWMap.empty[LineItem], readMajority, writeMajority, Some(cmd)) {
         cart ⇒ updateCart(cart, item)
       }
       replicator ! update
 
     case ReadFailure(DataKey, Some(AddItem(item))) ⇒
-      // ReadQuorum of Update failed, fall back to best effort local value
-      replicator ! Update(DataKey, LWWMap.empty[LineItem], writeQuorum, None) {
+      // ReadMajority of Update failed, fall back to best effort local value
+      replicator ! Update(DataKey, LWWMap.empty[LineItem], writeMajority, None) {
         cart ⇒ updateCart(cart, item)
       }
 
     case cmd @ RemoveItem(productId) ⇒
-      val update = Update(DataKey, LWWMap(), readQuorum, writeQuorum, Some(cmd)) {
+      val update = Update(DataKey, LWWMap(), readMajority, writeMajority, Some(cmd)) {
         _ - productId
       }
       replicator ! update
 
     case ReadFailure(DataKey, Some(RemoveItem(productId))) ⇒
-      // ReadQuorum of Update failed, fall back to best effort local value
-      replicator ! Update(DataKey, LWWMap(), writeQuorum, None) {
+      // ReadMajority of Update failed, fall back to best effort local value
+      replicator ! Update(DataKey, LWWMap(), writeMajority, None) {
         _ - productId
       }
 

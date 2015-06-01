@@ -36,6 +36,7 @@ import akka.cluster.UniqueAddress
 import akka.serialization.SerializationExtension
 import akka.util.ByteString
 import com.typesafe.config.Config
+import akka.japi.function.{ Function ⇒ JFunction }
 
 object ReplicatorSettings {
 
@@ -135,7 +136,7 @@ object Replicator {
   final case class ReadFrom(n: Int, timeout: FiniteDuration) extends ReadConsistency {
     require(n >= 2, "ReadFrom n must be >= 2, use ReadLocal for n=1")
   }
-  final case class ReadQuorum(timeout: FiniteDuration) extends ReadConsistency
+  final case class ReadMajority(timeout: FiniteDuration) extends ReadConsistency
   final case class ReadAll(timeout: FiniteDuration) extends ReadConsistency
 
   sealed trait WriteConsistency {
@@ -147,24 +148,25 @@ object Replicator {
   final case class WriteTo(n: Int, timeout: FiniteDuration) extends WriteConsistency {
     require(n >= 2, "WriteTo n must be >= 2, use WriteLocal for n=1")
   }
-  final case class WriteQuorum(timeout: FiniteDuration) extends WriteConsistency
+  final case class WriteMajority(timeout: FiniteDuration) extends WriteConsistency
   final case class WriteAll(timeout: FiniteDuration) extends WriteConsistency
 
   /**
-   * Java API: The [[ReadLocal]] instance
+   * Java API: The `ReadLocal` instance
    */
-  def readLocalInstance = ReadLocal
+  def readLocal = ReadLocal
 
   /**
-   * Java API: The [[WriteLocal]] instance
+   * Java API: The `WriteLocal` instance
    */
-  def writeLocalInstance = WriteLocal
+  def writeLocal = WriteLocal
 
   case object GetKeys
   /**
-   * Java API: The [[GetKeys]] instance
+   * Java API: The `GetKeys` instance
    */
-  def GetKeysInstance = GetKeys
+  def getKeys = GetKeys
+
   final case class GetKeysResult(keys: Set[String]) {
     /**
      * Java API
@@ -322,7 +324,7 @@ object Replicator {
      * or local correlation data structures.
      */
     def this(key: String, readConsistency: ReadConsistency, writeConsistency: WriteConsistency,
-             request: Option[Any], modify: akka.japi.Function[Option[A], A]) =
+             request: Option[Any], modify: JFunction[Option[A], A]) =
       this(key, readConsistency, writeConsistency, request)(data ⇒ modify.apply(data))
 
     /**
@@ -332,7 +334,7 @@ object Replicator {
      * passed to the `modify` function.
      */
     def this(
-      key: String, initial: A, writeConsistency: WriteConsistency, modify: akka.japi.Function[A, A]) =
+      key: String, initial: A, writeConsistency: WriteConsistency, modify: JFunction[A, A]) =
       this(key, ReadLocal, writeConsistency, None)(Update.modifyWithInitial(initial, data ⇒ modify.apply(data)))
 
     /**
@@ -347,7 +349,7 @@ object Replicator {
      */
     def this(
       key: String, initial: A, writeConsistency: WriteConsistency,
-      request: Option[Any], modify: akka.japi.Function[A, A]) =
+      request: Option[Any], modify: JFunction[A, A]) =
       this(key, ReadLocal, writeConsistency, request)(Update.modifyWithInitial(initial, data ⇒ modify.apply(data)))
 
     /**
@@ -363,7 +365,7 @@ object Replicator {
      */
     def this(
       key: String, initial: A, readConsistency: ReadConsistency, writeConsistency: WriteConsistency,
-      request: Option[Any], modify: akka.japi.Function[A, A]) =
+      request: Option[Any], modify: JFunction[A, A]) =
       this(key, readConsistency, writeConsistency, request)(Update.modifyWithInitial(initial, data ⇒ modify.apply(data)))
 
   }
@@ -391,10 +393,6 @@ object Replicator {
    * [[ReadConsistency readConsistency level]] and [[ReadConsistency#timeout timeout]].
    */
   final case class ReadFailure(key: String, request: Option[Any]) extends UpdateFailure
-  final case class InvalidUsage(key: String, errorMessage: String, request: Option[Any])
-    extends RuntimeException(errorMessage) with NoStackTrace with UpdateFailure {
-    override def toString: String = s"InvalidUsage [$key]: $errorMessage"
-  }
   /**
    * If the `modify` function of the [[Update]] throws an exception the reply message
    * will be this `ModifyFailure` message. The original exception is included as `cause`.
@@ -427,9 +425,9 @@ object Replicator {
   final case object GetReplicaCount
 
   /**
-   * Java API: The [[GetReplicaCount]] instance
+   * Java API: The `GetReplicaCount` instance
    */
-  def replicaInstance = GetReplicaCount
+  def getReplicaCount = GetReplicaCount
 
   /**
    * @see [[GetReplicaCount]]
@@ -443,9 +441,9 @@ object Replicator {
   case object FlushChanges
 
   /**
-   * Java API: The [[FlushChanges]] instance
+   * Java API: The `FlushChanges` instance
    */
-  def flushChangesInstance = FlushChanges
+  def flushChanges = FlushChanges
 
   /**
    * Marker trait for remote messages serialized by
@@ -518,6 +516,7 @@ object Replicator {
             }
           }
 
+          // cleanup both sides before merging, `merge((otherData: ReplicatedData)` will cleanup other.data
           copy(data = cleaned(data, mergedRemovedNodePruning), pruning = mergedRemovedNodePruning).merge(other.data)
         }
 
@@ -534,9 +533,9 @@ object Replicator {
       def addSeen(node: Address): DataEnvelope = {
         var changed = false
         val newRemovedNodePruning = pruning.map {
-          case (removed, pruningNode) ⇒
-            val newPruningState = pruningNode.addSeen(node)
-            changed = (newPruningState ne pruningNode) || changed
+          case (removed, pruningState) ⇒
+            val newPruningState = pruningState.addSeen(node)
+            changed = (newPruningState ne pruningState) || changed
             (removed, newPruningState)
         }
         if (changed) copy(pruning = newRemovedNodePruning)
@@ -608,13 +607,16 @@ object Replicator {
  * function that only uses the data parameter and stable fields from enclosing scope. It must
  * for example not access `sender()` reference of an enclosing actor.
  *
+ * `Update` is intended to only be sent from an actor running in same local `ActorSystem` as
+ * the `Replicator`, because the `modify` function is typically not serializable.
+ *
  * You supply a write consistency level which has the following meaning:
  * <ul>
  * <li>`WriteLocal` the value will immediately only be written to the local replica,
  *     and later disseminated with gossip</li>
  * <li>`WriteTo(n)` the value will immediately be written to at least `n` replicas,
  *     including the local replica</li>
- * <li>`WriteQuorum` the value will immediately be written to a majority of replicas, i.e.
+ * <li>`WriteMajority` the value will immediately be written to a majority of replicas, i.e.
  *     at least `N/2 + 1` replicas, where N is the number of nodes in the cluster
  *     (or cluster role group)</li>
  * <li>`WriteAll` the value will immediately be written to all nodes in the cluster
@@ -653,7 +655,7 @@ object Replicator {
  * <li>`ReadLocal` the value will only be read from the local replica</li>
  * <li>`ReadFrom(n)` the value will be read and merged from `n` replicas,
  *     including the local replica</li>
- * <li>`ReadQuorum` the value will be read and merged from a majority of replicas, i.e.
+ * <li>`ReadMajority` the value will be read and merged from a majority of replicas, i.e.
  *     at least `N/2 + 1` replicas, where N is the number of nodes in the cluster
  *     (or cluster role group)</li>
  * <li>`ReadAll` the value will be read and merged from all nodes in the cluster
@@ -780,7 +782,8 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
 
   // the actual data
   var dataEntries = Map.empty[String, (DataEnvelope, Digest)]
-  var changed = Map.empty[String, Digest]
+  // keys that have changed, Changed event published to subscribers on FlushChanges
+  var changed = Set.empty[String]
 
   // for splitting up gossip in chunks
   var statusCount = 0L
@@ -810,31 +813,30 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
   def receive = normalReceive
 
   val normalReceive: Receive = {
-    case Get(key, consistency, req)                 ⇒ receiveGet(key, consistency, req, sender())
-    case Update(key, _, _, req) if !isLocalSender() ⇒ receiveInvalidUpdate(key, req)
-    case u @ Update(key, readC, writeC, req)        ⇒ receiveUpdate(key, u.modify, readC, writeC, req, sender())
-    case Read(key)                                  ⇒ receiveRead(key)
-    case Write(key, envelope)                       ⇒ receiveWrite(key, envelope)
-    case ReadRepair(key, envelope)                  ⇒ receiveReadRepair(key, envelope)
-    case FlushChanges                               ⇒ receiveFlushChanges()
-    case GossipTick                                 ⇒ receiveGossipTick()
-    case ClockTick                                  ⇒ receiveClockTick()
-    case Status(otherDigests, chunk, totChunks)     ⇒ receiveStatus(otherDigests, chunk, totChunks)
-    case Gossip(updatedData, sendBack)              ⇒ receiveGossip(updatedData, sendBack)
-    case Subscribe(key, subscriber)                 ⇒ receiveSubscribe(key, subscriber)
-    case Unsubscribe(key, subscriber)               ⇒ receiveUnsubscribe(key, subscriber)
-    case Terminated(ref)                            ⇒ receiveTerminated(ref)
-    case MemberUp(m)                                ⇒ receiveMemberUp(m)
-    case MemberRemoved(m, _)                        ⇒ receiveMemberRemoved(m)
-    case _: MemberEvent                             ⇒ // not of interest
-    case UnreachableMember(m)                       ⇒ receiveUnreachable(m)
-    case ReachableMember(m)                         ⇒ receiveReachable(m)
-    case LeaderChanged(leader)                      ⇒ receiveLeaderChanged(leader, None)
-    case RoleLeaderChanged(role, leader)            ⇒ receiveLeaderChanged(leader, Some(role))
-    case GetKeys                                    ⇒ receiveGetKeys()
-    case Delete(key, consistency)                   ⇒ receiveDelete(key, consistency, sender())
-    case RemovedNodePruningTick                     ⇒ receiveRemovedNodePruningTick()
-    case GetReplicaCount                            ⇒ receiveGetReplicaCount()
+    case Get(key, consistency, req)             ⇒ receiveGet(key, consistency, req, sender())
+    case u @ Update(key, readC, writeC, req)    ⇒ receiveUpdate(key, u.modify, readC, writeC, req, sender())
+    case Read(key)                              ⇒ receiveRead(key)
+    case Write(key, envelope)                   ⇒ receiveWrite(key, envelope)
+    case ReadRepair(key, envelope)              ⇒ receiveReadRepair(key, envelope)
+    case FlushChanges                           ⇒ receiveFlushChanges()
+    case GossipTick                             ⇒ receiveGossipTick()
+    case ClockTick                              ⇒ receiveClockTick()
+    case Status(otherDigests, chunk, totChunks) ⇒ receiveStatus(otherDigests, chunk, totChunks)
+    case Gossip(updatedData, sendBack)          ⇒ receiveGossip(updatedData, sendBack)
+    case Subscribe(key, subscriber)             ⇒ receiveSubscribe(key, subscriber)
+    case Unsubscribe(key, subscriber)           ⇒ receiveUnsubscribe(key, subscriber)
+    case Terminated(ref)                        ⇒ receiveTerminated(ref)
+    case MemberUp(m)                            ⇒ receiveMemberUp(m)
+    case MemberRemoved(m, _)                    ⇒ receiveMemberRemoved(m)
+    case _: MemberEvent                         ⇒ // not of interest
+    case UnreachableMember(m)                   ⇒ receiveUnreachable(m)
+    case ReachableMember(m)                     ⇒ receiveReachable(m)
+    case LeaderChanged(leader)                  ⇒ receiveLeaderChanged(leader, None)
+    case RoleLeaderChanged(role, leader)        ⇒ receiveLeaderChanged(leader, Some(role))
+    case GetKeys                                ⇒ receiveGetKeys()
+    case Delete(key, consistency)               ⇒ receiveDelete(key, consistency, sender())
+    case RemovedNodePruningTick                 ⇒ receiveRemovedNodePruningTick()
+    case GetReplicaCount                        ⇒ receiveGetReplicaCount()
   }
 
   def receiveGet(key: String, consistency: ReadConsistency, req: Option[Any], replyTo: ActorRef): Unit = {
@@ -854,9 +856,9 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
 
   def isLocalGet(readConsistency: ReadConsistency): Boolean =
     readConsistency match {
-      case ReadLocal                  ⇒ true
-      case _: ReadQuorum | _: ReadAll ⇒ nodes.isEmpty
-      case _                          ⇒ false
+      case ReadLocal                    ⇒ true
+      case _: ReadMajority | _: ReadAll ⇒ nodes.isEmpty
+      case _                            ⇒ false
     }
 
   def receiveRead(key: String): Unit = {
@@ -864,11 +866,6 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
   }
 
   def isLocalSender(): Boolean = !sender().path.address.hasGlobalScope
-
-  def receiveInvalidUpdate(key: String, req: Option[Any]): Unit = {
-    sender() ! InvalidUsage(key,
-      "Replicator Update should only be used from an actor running in same local ActorSystem", req)
-  }
 
   def receiveUpdate(key: String, modify: Option[ReplicatedData] ⇒ ReplicatedData,
                     readConsistency: ReadConsistency, writeConsistency: WriteConsistency,
@@ -917,13 +914,12 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
 
   def isLocalUpdate(writeConsistency: WriteConsistency): Boolean =
     writeConsistency match {
-      case WriteLocal                   ⇒ true
-      case _: WriteQuorum | _: WriteAll ⇒ nodes.isEmpty
-      case _                            ⇒ false
+      case WriteLocal                     ⇒ true
+      case _: WriteMajority | _: WriteAll ⇒ nodes.isEmpty
+      case _                              ⇒ false
     }
 
   val updateInProgressReceive: Receive = ({
-    case Update(key, _, _, req) if !isLocalSender() ⇒ receiveInvalidUpdate(key, req)
     case cmd: Command if updateInProgressBuffer.contains(cmd.key) ⇒
       log.debug("Update in progress for [{}], buffering [{}]", cmd.key, cmd)
       updateInProgressBuffer = updateInProgressBuffer.updated(cmd.key,
@@ -1029,10 +1025,7 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
 
   def setData(key: String, envelope: DataEnvelope): Unit = {
     // notify subscribers, later
-    if (subscribers.contains(key) && !changed.contains(key)) {
-      val oldDigest = getDigest(key)
-      changed = changed.updated(key, oldDigest)
-    }
+    changed += key
 
     val dig = if (envelope.data == DeletedData) DeletedDigest else LazyDigest
     dataEntries = dataEntries.updated(key, (envelope, dig))
@@ -1040,7 +1033,7 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
 
   def getDigest(key: String): Digest = {
     dataEntries.get(key) match {
-      case Some((envelope @ DataEnvelope(_, _), LazyDigest)) ⇒
+      case Some((envelope, LazyDigest)) ⇒
         val d = digest(envelope)
         dataEntries = dataEntries.updated(key, (envelope, d))
         d
@@ -1067,11 +1060,12 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
     }
 
     if (subscribers.nonEmpty) {
-      for ((key, oldDigest) ← changed; subs ← subscribers.get(key)) {
-        if (oldDigest != getDigest(key))
-          notify(key, subs)
-      }
+      for (key ← changed; if subscribers.contains(key); subs ← subscribers.get(key))
+        notify(key, subs)
     }
+
+    // Changed event is sent to new subscribers even though the key has not changed,
+    // i.e. send current value
     if (newSubscribers.nonEmpty) {
       for ((key, subs) ← newSubscribers) {
         notify(key, subs)
@@ -1080,7 +1074,7 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
       newSubscribers.clear()
     }
 
-    changed = Map.empty[String, Digest]
+    changed = Set.empty[String]
   }
 
   def receiveGossipTick(): Unit = selectRandomNode(nodes.toVector) foreach gossipTo
@@ -1432,7 +1426,7 @@ private[akka] class WriteAggregator(
   override val doneWhenRemainingSize = consistency match {
     case WriteTo(n, _) ⇒ nodes.size - (n - 1)
     case _: WriteAll   ⇒ 0
-    case _: WriteQuorum ⇒
+    case _: WriteMajority ⇒
       val N = nodes.size + 1
       val w = N / 2 + 1 // write to at least (N/2+1) nodes
       N - w
@@ -1511,7 +1505,7 @@ private[akka] class ReadAggregator(
   override val doneWhenRemainingSize = consistency match {
     case ReadFrom(n, _) ⇒ nodes.size - (n - 1)
     case _: ReadAll     ⇒ 0
-    case _: ReadQuorum ⇒
+    case _: ReadMajority ⇒
       val N = nodes.size + 1
       val r = N / 2 + 1 // read from at least (N/2+1) nodes
       N - r

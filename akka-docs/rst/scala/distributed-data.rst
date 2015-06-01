@@ -32,7 +32,7 @@ with a specific role. It communicates with other ``Replicator`` instances with t
 ``akka.cluster.ddata.DistributedData`` extension.
 
 Below is an example of an actor that schedules tick messages to itself and for each tick 
-adds or remove elements from a ``ORSet`` (observed-remove set). It also subscribes to
+adds or removes elements from a ``ORSet`` (observed-remove set). It also subscribes to
 changes of this. 
 
 .. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#data-bot
@@ -53,13 +53,16 @@ The ``modify`` function is called by the ``Replicator`` actor and must therefore
 function that only uses the data parameter and stable fields from enclosing scope. It must
 for example not access ``sender()`` reference of an enclosing actor.
 
+``Update`` is intended to only be sent from an actor running in same local ``ActorSystem`` as
+ * the `Replicator`, because the `modify` function is typically not serializable.
+
 You supply a write consistency level which has the following meaning:
 
 * ``WriteLocal`` the value will immediately only be written to the local replica,
   and later disseminated with gossip
 * ``WriteTo(n)`` the value will immediately be written to at least ``n`` replicas,
   including the local replica
-* ``WriteQuorum`` the value will immediately be written to a majority of replicas, i.e.
+* ``WriteMajority`` the value will immediately be written to a majority of replicas, i.e.
   at least **N/2 + 1** replicas, where N is the number of nodes in the cluster
   (or cluster role group)
 * ``WriteAll`` the value will immediately be written to all nodes in the cluster
@@ -112,7 +115,7 @@ To retrieve the current value of a data you send ``Replicator.Get`` message to t
 * ``ReadLocal`` the value will only be read from the local replica
 * ``ReadFrom(n)`` the value will be read and merged from ``n`` replicas,
   including the local replica
-* ``ReadQuorum`` the value will be read and merged from a majority of replicas, i.e.
+* ``ReadMajority`` the value will be read and merged from a majority of replicas, i.e.
   at least **N/2 + 1** replicas, where N is the number of nodes in the cluster
   (or cluster role group)
 * ``ReadAll`` the value will be read and merged from all nodes in the cluster
@@ -169,17 +172,17 @@ write by using the following formula::
 where N is the total number of nodes in the cluster, or the number of nodes with the role that is
 used for the ``Replicator``.
 
-For example, in a 7 node cluster you get this strong read consistency by writing to 4 nodes and
-reading from 4 nodes, or writing to 5 nodes and reading from 3 nodes.
+For example, in a 7 node cluster this these consistency properties are achieved by writing to 4 nodes
+and reading from 4 nodes, or writing to 5 nodes and reading from 3 nodes.
 
-Strong consistency is the purpose of combining ``WriteQuorum`` and ``ReadQuorum`` levels.
+By combining ``WriteMajority`` and ``ReadMajority`` levels a read always reflects the most recent write.
 The ``Replicator`` writes and reads to a majority of replicas, i.e. **N / 2 + 1**. For example,
 in a 5 node cluster it writes to 3 nodes and reads from 3 nodes. In a 6 node cluster it writes 
 to 4 nodes and reads from 4 nodes.
 
 .. warning::
 
-  *Caveat:* Even if you use ``WriteQuorum`` and ``ReadQuorum`` there is small risk that you may
+  *Caveat:* Even if you use ``WriteMajority`` and ``ReadMajority`` there is small risk that you may
   read stale data if the cluster membership has changed between the ``Update`` and the ``Get``.
   For example, in cluster of 5 nodes when you ``Update`` and that change is written to 3 nodes: 
   n1, n2, n3. Then 2 more nodes are added and a ``Get`` request is reading from 4 nodes, which 
