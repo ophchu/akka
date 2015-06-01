@@ -36,6 +36,7 @@ import akka.util.ByteString
 import com.typesafe.config.Config
 import akka.japi.function.{ Function ⇒ JFunction }
 import akka.dispatch.Dispatchers
+import akka.actor.DeadLetterSuppression
 
 object ReplicatorSettings {
 
@@ -477,9 +478,9 @@ object Replicator {
     case object RemovedNodePruningTick
     case object ClockTick
     final case class Write(key: String, envelope: DataEnvelope) extends ReplicatorMessage
-    case object WriteAck extends ReplicatorMessage
+    case object WriteAck extends ReplicatorMessage with DeadLetterSuppression
     final case class Read(key: String) extends ReplicatorMessage
-    final case class ReadResult(envelope: Option[DataEnvelope]) extends ReplicatorMessage
+    final case class ReadResult(envelope: Option[DataEnvelope]) extends ReplicatorMessage with DeadLetterSuppression
     final case class ReadRepair(key: String, envelope: DataEnvelope)
     case object ReadRepairAck
     final case class BufferedCommand(cmd: Command, replyTo: ActorRef)
@@ -1392,24 +1393,6 @@ private[akka] abstract class ReadWriteAggregator extends Actor {
   def replica(address: Address): ActorSelection =
     context.actorSelection(context.parent.path.toStringWithAddress(address))
 
-  def becomeDone(): Unit = {
-    if (remaining.isEmpty)
-      context.stop(self)
-    else {
-      // stay around a bit more to collect acks, avoiding deadletters
-      context.become(done)
-      timeoutSchedule.cancel()
-      timeoutSchedule = context.system.scheduler.scheduleOnce(2.seconds, self, ReceiveTimeout)
-    }
-  }
-
-  def done: Receive = {
-    case WriteAck | _: ReadResult ⇒
-      remaining -= sender().path.address
-      if (remaining.isEmpty) context.stop(self)
-    case SendToSecondary ⇒
-    case ReceiveTimeout  ⇒ context.stop(self)
-  }
 }
 
 /**
@@ -1485,7 +1468,7 @@ private[akka] class WriteAggregator(
       replyTo.tell(ReplicationDeleteFailure(key), context.parent)
     else
       replyTo.tell(UpdateTimeout(key, req), context.parent)
-    becomeDone()
+    context.stop(self)
   }
 }
 
@@ -1569,10 +1552,10 @@ private[akka] class ReadAggregator(
         context.become(waitReadRepairAck(envelope))
       case (true, None) ⇒
         replyTo.tell(NotFound(key, req), context.parent)
-        becomeDone()
+        context.stop(self)
       case (false, _) ⇒
         replyTo.tell(GetFailure(key, req), context.parent)
-        becomeDone()
+        context.stop(self)
     }
 
   def waitReadRepairAck(envelope: Replicator.Internal.DataEnvelope): Receive = {
@@ -1581,7 +1564,7 @@ private[akka] class ReadAggregator(
         if (envelope.data == DeletedData) DataDeleted(key)
         else GetSuccess(key, envelope.data, req)
       replyTo.tell(replyMsg, context.parent)
-      becomeDone()
+      context.stop(self)
     case _: ReadResult ⇒
       //collect late replies
       remaining -= sender().path.address
