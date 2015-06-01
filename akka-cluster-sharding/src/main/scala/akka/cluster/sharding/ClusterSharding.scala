@@ -1055,12 +1055,13 @@ private[akka] class Shard(
   }
 
   override def receiveCommand: Receive = {
-    case Terminated(ref)                                ⇒ receiveTerminated(ref)
-    case msg: CoordinatorMessage                        ⇒ receiveCoordinatorMessage(msg)
-    case msg: ShardCommand                              ⇒ receiveShardCommand(msg)
-    case msg: ShardRegionCommand                        ⇒ receiveShardRegionCommand(msg)
-    case PersistenceFailure(payload: StateChange, _, _) ⇒ persistenceFailure(payload)
-    case msg if idExtractor.isDefinedAt(msg)            ⇒ deliverMessage(msg, sender())
+    case Terminated(ref)                     ⇒ receiveTerminated(ref)
+    case msg: CoordinatorMessage             ⇒ receiveCoordinatorMessage(msg)
+    case msg: ShardCommand                   ⇒ receiveShardCommand(msg)
+    case msg: ShardRegionCommand             ⇒ receiveShardRegionCommand(msg)
+    // FIXME rewrite this
+    //    case PersistenceFailure(payload: StateChange, _, _) ⇒ persistenceFailure(payload)
+    case msg if idExtractor.isDefinedAt(msg) ⇒ deliverMessage(msg, sender())
   }
 
   def receiveShardCommand(msg: ShardCommand): Unit = msg match {
@@ -1251,7 +1252,7 @@ class ShardCoordinatorSupervisor(failureBackoff: FiniteDuration, coordinatorProp
   import ShardCoordinatorSupervisor._
 
   def startCoordinator(): Unit = {
-    // it will be stopped in case of PersistenceFailure
+    // it will be stopped in case of persistence failure
     context.watch(context.actorOf(coordinatorProps, "coordinator"))
   }
 

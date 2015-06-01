@@ -94,19 +94,22 @@ object AtLeastOnceDeliveryFailureSpec {
 
       case Confirm(deliveryId, i) ⇒ persist(MsgConfirmed(deliveryId, i))(updateState)
 
-      case PersistenceFailure(MsgSent(i), _, _) ⇒
-        // inform sender about journaling failure so that it can resend
-        sender() ! JournalingFailure(i)
-
-      case PersistenceFailure(MsgConfirmed(_, i), _, _) ⇒
-      // ok, will be redelivered
+      // FIXME rewrite this
+      //      case PersistenceFailure(MsgSent(i), _, _) ⇒
+      //        // inform sender about journaling failure so that it can resend
+      //        sender() ! JournalingFailure(i)
+      //
+      //      case PersistenceFailure(MsgConfirmed(_, i), _, _) ⇒
+      //      // ok, will be redelivered
     }
 
     def receiveRecover: Receive = {
       case evt: Evt ⇒ updateState(evt)
-      case RecoveryFailure(_) ⇒
-        // journal failed during recovery, throw exception to re-recover persistent actor
-        throw new TestException(debugMessage("recovery failed"))
+    }
+
+    override private[akka] def onReplayFailure(cause: Throwable, event: Option[Any]): Unit = {
+      // journal failed during recovery, throw exception to re-recover persistent actor
+      throw new TestException(debugMessage("recovery failed"))
     }
 
     def updateState(evt: Evt): Unit = evt match {

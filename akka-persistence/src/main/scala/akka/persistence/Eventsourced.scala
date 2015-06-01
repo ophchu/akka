@@ -92,15 +92,26 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
    * Called whenever a message replay succeeds.
    * May be implemented by subclass.
    */
-  private[persistence] def onReplaySuccess(): Unit = ()
+  private[akka] def onReplaySuccess(): Unit = ()
 
   /**
    * INTERNAL API.
-   * Called whenever a message replay fails.
-   * May be implemented by subclass.
+   * Called whenever a message replay fails. Logs the error and stops the actor.
    * @param cause failure cause.
+   * @param event the event that was processed in `receiveRecover`, if the exception
+   *   was thrown there
    */
-  private[persistence] def onReplayFailure(cause: Throwable): Unit = ()
+  private[akka] def onReplayFailure(cause: Throwable, event: Option[Any]): Unit = {
+    event match {
+      case Some(evt) ⇒
+        log.error(cause, "Exception in receiveRecover when replaying event [{}] with sequence number [{}] for " +
+          "persistenceId [{}].", evt.getClass.getName, lastSequenceNr, persistenceId)
+      case None ⇒
+        log.error(cause, "Persistence failure when replaying events for persistenceId [{}]. " +
+          "Last known sequence number [{}]", persistenceId, lastSequenceNr)
+    }
+    context.stop(self)
+  }
 
   /**
    * User-overridable callback. Called when a persistent actor is started or restarted.
@@ -156,17 +167,6 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
   override def unhandled(message: Any): Unit = {
     message match {
       case RecoveryCompleted | ReadHighestSequenceNrSuccess | ReadHighestSequenceNrFailure ⇒ // mute
-      case RecoveryFailure(cause) ⇒
-        val errorMsg = s"PersistentActor killed after recovery failure (persisten id = [${persistenceId}]). " +
-          "To avoid killing persistent actors on recovery failure, a PersistentActor must handle RecoveryFailure messages. " +
-          "RecoveryFailure was caused by: " + cause
-        throw new ActorKilledException(errorMsg)
-      case PersistenceFailure(payload, sequenceNumber, cause) ⇒
-        val errorMsg = "PersistentActor killed after persistence failure " +
-          s"(persistent id = [${persistenceId}], sequence nr = [${sequenceNumber}], payload class = [${payload.getClass.getName}]). " +
-          "To avoid killing persistent actors on persistence failure, a PersistentActor must handle PersistenceFailure messages. " +
-          "PersistenceFailure was caused by: " + cause
-        throw new ActorKilledException(errorMsg)
       case m ⇒ super.unhandled(m)
     }
   }
@@ -203,9 +203,8 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
    * should not perform actions that may fail, such as interacting with external services,
    * for example.
    *
-   * If recovery fails, the actor will be stopped by throwing ActorKilledException.
-   * This can be customized by handling [[RecoveryFailure]] message in `receiveRecover`
-   * and/or defining `supervisorStrategy` in parent actor.
+   * If there is a problem with recovering the state of the actor from the journal, the error
+   * will be logged and the actor will be stopped.
    *
    * @see [[Recover]]
    */
@@ -233,9 +232,9 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
    * Within an event handler, applications usually update persistent actor state using persisted event
    * data, notify listeners and reply to command senders.
    *
-   * If persistence of an event fails, the persistent actor will be stopped by throwing ActorKilledException.
-   * This can be customized by handling [[PersistenceFailure]] message in [[#receiveCommand]]
-   * and/or defining `supervisorStrategy` in parent actor.
+   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
+   * and the default supervision strategy will stop the persistent actor.
+   * This can be customized by defining `supervisorStrategy` in parent actor.
    *
    * @param event event to be persisted
    * @param handler handler for each persisted `event`
@@ -270,9 +269,9 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
    * event is the sender of the corresponding command. This means that one can reply to a command
    * sender within an event `handler`.
    *
-   * If persistence of an event fails, the persistent actor will be stopped by throwing ActorKilledException.
-   * This can be customized by handling [[PersistenceFailure]] message in [[#receiveCommand]]
-   * and/or defining `supervisorStrategy` in parent actor.
+   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
+   * and the default supervision strategy will stop the persistent actor.
+   * This can be customized by defining `supervisorStrategy` in parent actor.
    *
    * @param event event to be persisted
    * @param handler handler for each persisted `event`
@@ -304,10 +303,9 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
    *
    * If there are no pending persist handler calls, the handler will be called immediately.
    *
-   * In the event of persistence failures (indicated by [[PersistenceFailure]] messages being sent to the
-   * [[PersistentActor]], you can handle these messages, which in turn will enable the deferred handlers to run afterwards.
-   * If persistence failure messages are left `unhandled`, the default behavior is to stop the Actor by
-   * throwing ActorKilledException, thus the handlers will not be run.
+   * If persistence of an earlier event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
+   * and the default supervision strategy will stop the persistent actor, and the `handler`
+   * will not be run.
    *
    * @param event event to be handled in the future, when preceding persist operations have been processes
    * @param handler handler for the given `event`
@@ -398,8 +396,6 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
           _receiveRecover(payload)
         case s: SnapshotOffer if _receiveRecover.isDefinedAt(s) ⇒
           _receiveRecover(s)
-        case f: RecoveryFailure if _receiveRecover.isDefinedAt(f) ⇒
-          _receiveRecover(f)
         case RecoveryCompleted if _receiveRecover.isDefinedAt(RecoveryCompleted) ⇒
           _receiveRecover(RecoveryCompleted)
       }
@@ -428,11 +424,8 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
    * events.
    *
    * If replay succeeds it switches to `initializing` state and requests the highest stored sequence
-   * number from the journal. Otherwise RecoveryFailure is emitted.
+   * number from the journal. Otherwise the actor is stopped.
    * If replay succeeds the `onReplaySuccess` callback method is called, otherwise `onReplayFailure`.
-   *
-   * If processing of a replayed event fails, the exception is caught and
-   * stored for later `RecoveryFailure` message and state is changed to `recoveryFailed`.
    *
    * All incoming messages are stashed.
    */
@@ -448,47 +441,16 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
           Eventsourced.super.aroundReceive(recoveryBehavior, p)
         } catch {
           case NonFatal(t) ⇒
-            changeState(replayFailed(recoveryBehavior, t, p))
+            onReplayFailure(t, Some(p.payload))
         }
       case ReplayMessagesSuccess ⇒
         onReplaySuccess() // callback for subclass implementation
         changeState(initializing(recoveryBehavior))
         journal ! ReadHighestSequenceNr(lastSequenceNr, persistenceId, self)
       case ReplayMessagesFailure(cause) ⇒
-        // in case the actor resumes the state must be initializing
-        changeState(initializing(recoveryBehavior))
-        journal ! ReadHighestSequenceNr(lastSequenceNr, persistenceId, self)
-
-        onReplayFailure(cause) // callback for subclass implementation
-        Eventsourced.super.aroundReceive(recoveryBehavior, RecoveryFailure(cause)(None))
+        onReplayFailure(cause, event = None)
       case other ⇒
         internalStash.stash()
-    }
-  }
-
-  /**
-   * Consumes remaining replayed messages and then emits RecoveryFailure to the
-   * `receiveRecover` behavior.
-   */
-  private def replayFailed(recoveryBehavior: Receive, cause: Throwable, failed: PersistentRepr) = new State {
-
-    override def toString: String = "replay failed"
-    override def recoveryRunning: Boolean = true
-
-    override def stateReceive(receive: Receive, message: Any) = message match {
-      case ReplayedMessage(p) ⇒ updateLastSequenceNr(p)
-      case ReplayMessagesSuccess | ReplayMessagesFailure(_) ⇒ replayCompleted()
-      case r: Recover ⇒ // ignore
-      case _ ⇒ internalStash.stash()
-    }
-
-    def replayCompleted(): Unit = {
-      // in case the actor resumes the state must be initializing
-      changeState(initializing(recoveryBehavior))
-      journal ! ReadHighestSequenceNr(failed.sequenceNr, persistenceId, self)
-
-      Eventsourced.super.aroundReceive(recoveryBehavior,
-        RecoveryFailure(cause)(Some((failed.sequenceNr, failed.payload))))
     }
   }
 
@@ -536,10 +498,11 @@ private[persistence] trait Eventsourced extends Snapshotter with Stash with Stas
         // instanceId mismatch can happen for persistAsync and defer in case of actor restart
         // while message is in flight, in that case the handler has already been discarded
         if (id == instanceId) {
-          try {
-            Eventsourced.super.aroundReceive(receive, PersistenceFailure(p.payload, p.sequenceNr, cause)) // stops actor by default
-            onWriteMessageComplete(err = false)
-          } catch { case NonFatal(e) ⇒ onWriteMessageComplete(err = true); throw e }
+          onWriteMessageComplete(err = false)
+          val errorMsg = "PersistentActor killed after persistence failure " +
+            s"(persistent id = [${persistenceId}], sequence nr = [${p.sequenceNr}], payload class = [${p.payload.getClass.getName}]). " +
+            "Persistence failure was caused by: " + cause
+          throw new ActorKilledException(errorMsg)
         }
       case LoopMessageSuccess(l, id) ⇒
         // instanceId mismatch can happen for persistAsync and defer in case of actor restart

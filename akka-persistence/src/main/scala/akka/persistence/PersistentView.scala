@@ -208,12 +208,7 @@ trait PersistentView extends Actor with Snapshotter with Stash with StashFactory
   override def unhandled(message: Any): Unit = {
     message match {
       case RecoveryCompleted ⇒ // mute
-      case RecoveryFailure(cause) ⇒
-        val errorMsg = s"PersistentView killed after recovery failure (persisten id = [${persistenceId}]). " +
-          "To avoid killing persistent actors on recovery failure, a PersistentView must handle RecoveryFailure messages. " +
-          "RecoveryFailure was caused by: " + cause
-        throw new ActorKilledException(errorMsg)
-      case m ⇒ super.unhandled(m)
+      case m                 ⇒ super.unhandled(m)
     }
   }
 
@@ -279,11 +274,7 @@ trait PersistentView extends Actor with Snapshotter with Stash with StashFactory
    * events.
    *
    * If replay succeeds it switches to `initializing` state and requests the highest stored sequence
-   * number from the journal. Otherwise RecoveryFailure is emitted.
-   * If replay succeeds the `onReplaySuccess` callback method is called, otherwise `onReplayFailure`.
-   *
-   * If processing of a replayed event fails, the exception is caught and
-   * stored for later `RecoveryFailure` message and state is changed to `recoveryFailed`.
+   * number from the journal. Otherwise the actor is stopped.
    *
    * All incoming messages are stashed.
    */
@@ -306,13 +297,14 @@ trait PersistentView extends Actor with Snapshotter with Stash with StashFactory
           PersistentView.super.aroundReceive(receive, p.payload)
         } catch {
           case NonFatal(t) ⇒
+            // FIXME how to handle this
             changeState(replayFailed(t, p))
         }
       case ReplayMessagesSuccess ⇒
         onReplayComplete(await)
       case ReplayMessagesFailure(cause) ⇒
         onReplayComplete(await)
-        PersistentView.super.aroundReceive(receive, RecoveryFailure(cause)(None))
+      // FIXME how to handle this
       case other ⇒
         internalStash.stash()
     }
@@ -327,8 +319,7 @@ trait PersistentView extends Actor with Snapshotter with Stash with StashFactory
   }
 
   /**
-   * Consumes remaining replayed messages and then emits RecoveryFailure to the
-   * `receive` behavior.
+   * Consumes remaining replayed messages and then FIXME ...?
    */
   private def replayFailed(cause: Throwable, failed: PersistentRepr) = new State {
 
@@ -352,7 +343,7 @@ trait PersistentView extends Actor with Snapshotter with Stash with StashFactory
       // in case the actor resumes the state must be `idle`
       changeState(idle)
 
-      PersistentView.super.aroundReceive(receive, RecoveryFailure(cause)(Some((failed.sequenceNr, failed.payload))))
+      // FIXME how to handle this
     }
   }
 

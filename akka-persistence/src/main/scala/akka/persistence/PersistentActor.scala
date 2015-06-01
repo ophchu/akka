@@ -9,39 +9,6 @@ import akka.japi.Procedure
 import akka.actor.AbstractActor
 import akka.japi.Util
 
-/**
- * Sent to a [[PersistentActor]] if a journal fails to write a persistent message. If
- * not handled, an `akka.actor.ActorKilledException` is thrown by that persistent actor.
- *
- * @param payload payload of the persistent message.
- * @param sequenceNr sequence number of the persistent message.
- * @param cause failure cause.
- */
-@SerialVersionUID(1L)
-case class PersistenceFailure(payload: Any, sequenceNr: Long, cause: Throwable)
-
-/**
- * Sent to a [[PersistentActor]] if a journal fails to replay messages or fetch that persistent actor's
- * highest sequence number. If not handled, the actor will be stopped.
- *
- * Contains the [[#sequenceNr]] of the message that could not be replayed, if it
- * failed at a specific message.
- *
- * Contains the [[#payload]] of the message that could not be replayed, if it
- * failed at a specific message.
- */
-@SerialVersionUID(1L)
-case class RecoveryFailure(cause: Throwable)(failingMessage: Option[(Long, Any)]) {
-  override def toString: String = failingMessage match {
-    case Some((sequenceNr, payload)) ⇒ s"RecoveryFailure(${cause.getMessage},$sequenceNr,$payload)"
-    case None                        ⇒ s"RecoveryFailure(${cause.getMessage})"
-  }
-
-  def sequenceNr: Option[Long] = failingMessage.map { case (snr, _) ⇒ snr }
-
-  def payload: Option[Any] = failingMessage.map { case (_, payload) ⇒ payload }
-}
-
 abstract class RecoveryCompleted
 /**
  * Sent to a [[PersistentActor]] when the journal replay has been finished.
@@ -150,8 +117,9 @@ abstract class UntypedPersistentActor extends UntypedActor with Eventsourced wit
    * Within an event handler, applications usually update persistent actor state using persisted event
    * data, notify listeners and reply to command senders.
    *
-   * If persistence of an event fails, the persistent actor will be stopped. This can be customized by
-   * handling [[PersistenceFailure]] in [[onReceiveCommand]].
+   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
+   * and the default supervision strategy will stop the persistent actor.
+   * This can be customized by defining `supervisorStrategy` in parent actor.
    *
    * @param event event to be persisted.
    * @param handler handler for each persisted `event`
@@ -183,8 +151,9 @@ abstract class UntypedPersistentActor extends UntypedActor with Eventsourced wit
    * event is the sender of the corresponding command. This means that one can reply to a command
    * sender within an event `handler`.
    *
-   * If persistence of an event fails, the persistent actor will be stopped. This can be customized by
-   * handling [[PersistenceFailure]] in [[receiveCommand]].
+   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
+   * and the default supervision strategy will stop the persistent actor.
+   * This can be customized by defining `supervisorStrategy` in parent actor.
    *
    * @param event event to be persisted
    * @param handler handler for each persisted `event`
@@ -214,9 +183,8 @@ abstract class UntypedPersistentActor extends UntypedActor with Eventsourced wit
    *
    * If there are no pending persist handler calls, the handler will be called immediately.
    *
-   * In the event of persistence failures (indicated by [[PersistenceFailure]] messages being sent to the
-   * [[PersistentActor]], you can handle these messages, which in turn will enable the deferred handlers to run afterwards.
-   * If persistence failure messages are left `unhandled`, the default behavior is to stop the Actor, thus the handlers
+   * If persistence of an earlier event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
+   * and the default supervision strategy will stop the persistent actor, and the `deferAsync` callback
    * will not be run.
    *
    * @param event event to be handled in the future, when preceding persist operations have been processes
@@ -234,8 +202,8 @@ abstract class UntypedPersistentActor extends UntypedActor with Eventsourced wit
    * should not perform actions that may fail, such as interacting with external services,
    * for example.
    *
-   * If recovery fails, the actor will be stopped. This can be customized by
-   * handling [[RecoveryFailure]].
+   * If there is a problem with recovering the state of the actor from the journal, the error
+   * will be logged and the actor will be stopped.
    *
    * @see [[Recover]]
    */
@@ -271,8 +239,9 @@ abstract class AbstractPersistentActor extends AbstractActor with PersistentActo
    * Within an event handler, applications usually update persistent actor state using persisted event
    * data, notify listeners and reply to command senders.
    *
-   * If persistence of an event fails, the persistent actor will be stopped. This can be customized by
-   * handling [[PersistenceFailure]] in [[receiveCommand]].
+   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
+   * and the default supervision strategy will stop the persistent actor.
+   * This can be customized by defining `supervisorStrategy` in parent actor.
    *
    * @param event event to be persisted.
    * @param handler handler for each persisted `event`
@@ -299,8 +268,9 @@ abstract class AbstractPersistentActor extends AbstractActor with PersistentActo
    * call to `persistAsync` and executing it's `handler`. This asynchronous, non-stashing, version of
    * of persist should be used when you favor throughput over the strict ordering guarantees that `persist` guarantees.
    *
-   * If persistence of an event fails, the persistent actor will be stopped. This can be customized by
-   * handling [[PersistenceFailure]] in [[receiveCommand]].
+   * If persistence of an event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
+   * and the default supervision strategy will stop the persistent actor.
+   * This can be customized by defining `supervisorStrategy` in parent actor.
    *
    * @param event event to be persisted
    * @param handler handler for each persisted `event`
@@ -330,9 +300,8 @@ abstract class AbstractPersistentActor extends AbstractActor with PersistentActo
    *
    * If there are no pending persist handler calls, the handler will be called immediately.
    *
-   * In the event of persistence failures (indicated by [[PersistenceFailure]] messages being sent to the
-   * [[PersistentActor]], you can handle these messages, which in turn will enable the deferred handlers to run afterwards.
-   * If persistence failure messages are left `unhandled`, the default behavior is to stop the Actor, thus the handlers
+   * If persistence of an earlier event fails, the persistent actor will throw an [[akka.actor.ActorKilledException]],
+   * and the default supervision strategy will stop the persistent actor, and the `handler`
    * will not be run.
    *
    * @param event event to be handled in the future, when preceding persist operations have been processes
