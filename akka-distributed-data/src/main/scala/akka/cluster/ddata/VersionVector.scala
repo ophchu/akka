@@ -34,22 +34,22 @@ object VersionVector {
   private case object FullOrder extends Ordering
 
   /**
-   * Java API: The [[After]] instance
+   * Java API: The [[VersionVector.After]] instance
    */
   def AfterInstance = After
 
   /**
-   * Java API: The [[Before]] instance
+   * Java API: The [[VersionVector.Before]] instance
    */
   def BeforeInstance = Before
 
   /**
-   * Java API: The [[Same]] instance
+   * Java API: The [[VersionVector.Same]] instance
    */
   def SameInstance = Same
 
   /**
-   * Java API: The [[Concurrent]] instance
+   * Java API: The [[VersionVector.Concurrent]] instance
    */
   def ConcurrentInstance = Concurrent
 

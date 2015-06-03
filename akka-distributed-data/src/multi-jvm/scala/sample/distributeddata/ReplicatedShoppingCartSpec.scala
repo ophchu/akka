@@ -46,9 +46,11 @@ object ShoppingCart {
   final case class Cart(items: Set[LineItem])
   final case class LineItem(productId: String, title: String, quantity: Int)
 
+  //#read-write-majority
   private val timeout = 3.seconds
   private val readMajority = ReadMajority(timeout)
   private val writeMajority = WriteMajority(timeout)
+  //#read-write-majority
 
 }
 
@@ -61,8 +63,13 @@ class ShoppingCart(userId: String) extends Actor with Stash {
 
   val DataKey = "cart-" + userId
 
-  def receive = {
+  def receive = receiveGetCart
+    .orElse[Any, Unit](receiveAddItem)
+    .orElse[Any, Unit](receiveRemoveItem)
+    .orElse[Any, Unit](receiveOther)
 
+  //#get-cart
+  def receiveGetCart: Receive = {
     case GetCart ⇒
       replicator ! Get(DataKey, readMajority, Some(sender()))
 
@@ -76,33 +83,66 @@ class ShoppingCart(userId: String) extends Actor with Stash {
     case GetFailure(DataKey, Some(replyTo: ActorRef)) ⇒
       // ReadMajority failure, try again with local read
       replicator ! Get(DataKey, ReadLocal, Some(replyTo))
+  }
+  //#get-cart
 
+  //#add-item
+  def receiveAddItem: Receive = {
     case cmd @ AddItem(item) ⇒
-      val update = Update(DataKey, LWWMap.empty[LineItem], readMajority, writeMajority, Some(cmd)) {
+      val update = Update(DataKey, LWWMap.empty[LineItem], writeMajority, Some(cmd)) {
         cart ⇒ updateCart(cart, item)
       }
       replicator ! update
 
-    case ReadFailure(DataKey, Some(AddItem(item))) ⇒
+    case GetFailure(DataKey, Some(AddItem(item))) ⇒
       // ReadMajority of Update failed, fall back to best effort local value
       replicator ! Update(DataKey, LWWMap.empty[LineItem], writeMajority, None) {
         cart ⇒ updateCart(cart, item)
       }
+  }
+  //#add-item
 
+  //#remove-item
+  def receiveRemoveItem: Receive = {
     case cmd @ RemoveItem(productId) ⇒
-      val update = Update(DataKey, LWWMap(), readMajority, writeMajority, Some(cmd)) {
-        _ - productId
-      }
-      replicator ! update
+      // Try to fetch latest from a majority of nodes first, since ORMap
+      // remove must have seen the item to be able to remove it.
+      // Need to stash incoming commands, such as AddItem, to retain the
+      // order of the operations.
+      replicator ! Get(DataKey, readMajority, Some(cmd))
 
-    case ReadFailure(DataKey, Some(RemoveItem(productId))) ⇒
-      // ReadMajority of Update failed, fall back to best effort local value
-      replicator ! Update(DataKey, LWWMap(), writeMajority, None) {
-        _ - productId
-      }
+      context.become({
+        case GetSuccess(DataKey, _, Some(RemoveItem(productId))) ⇒
+          replicator ! Update(DataKey, LWWMap(), writeMajority, None) {
+            _ - productId
+          }
+          unstashAll()
+          context.unbecome()
 
+        case GetFailure(DataKey, Some(RemoveItem(productId))) ⇒
+          // ReadMajority failed, fall back to best effort local value
+          replicator ! Update(DataKey, LWWMap(), writeMajority, None) {
+            _ - productId
+          }
+          unstashAll()
+          context.unbecome()
+
+        case NotFound(DataKey, Some(RemoveItem(productId))) ⇒
+          // nothing to remove
+          unstashAll()
+          context.unbecome()
+
+        case _ ⇒
+          stash()
+
+      }, discardOld = false)
+  }
+  //#remove-item
+
+  def receiveOther: Receive = {
     case _: UpdateSuccess | _: UpdateTimeout ⇒
     // UpdateTimeout, will eventually be replicated
+    case e: UpdateFailure                    ⇒ throw new IllegalStateException("Unexpected failure: " + e)
   }
 
   def updateCart(data: LWWMap[LineItem], item: LineItem): LWWMap[LineItem] =
@@ -111,11 +151,6 @@ class ShoppingCart(userId: String) extends Actor with Stash {
         data + (item.productId -> item.copy(quantity = existingQuantity + item.quantity))
       case None ⇒ data + (item.productId -> item)
     }
-
-  override def unhandled(msg: Any): Unit = msg match {
-    case e: UpdateFailure ⇒ throw new IllegalStateException("Unexpected failure: " + e)
-    case _                ⇒ super.unhandled(msg)
-  }
 
 }
 
@@ -190,6 +225,7 @@ class ReplicatedShoppingCartSpec extends MultiNodeSpec(ReplicatedShoppingCartSpe
     "read own updates" in within(5.seconds) {
       runOn(node2) {
         shoppingCart ! ShoppingCart.AddItem(LineItem("1", "Apples", quantity = 1))
+        // The stashing in the ShoppingCart actor is needed because of this scenario
         shoppingCart ! ShoppingCart.RemoveItem("3")
         shoppingCart ! ShoppingCart.AddItem(LineItem("3", "Bananas", quantity = 5))
         shoppingCart ! ShoppingCart.GetCart

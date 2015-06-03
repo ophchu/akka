@@ -24,7 +24,7 @@ object LWWRegister {
   }
 
   /**
-   * The default [[Clock]] is using max value of `System.currentTimeMillis()`
+   * The default [[LWWRegister.Clock]] is using max value of `System.currentTimeMillis()`
    * and `currentTimestamp + 1`.
    */
   def defaultClock[A]: Clock[A] = _defaultClock.asInstanceOf[Clock[A]]
@@ -35,7 +35,7 @@ object LWWRegister {
   }
 
   /**
-   * This [[Clock]] can be used for first-write-wins semantics. It is using min value of
+   * This [[LWWRegister.Clock]] can be used for first-write-wins semantics. It is using min value of
    * `-System.currentTimeMillis()` and `currentTimestamp + 1`, i.e. it is counting backwards.
    */
   def reverseClock[A]: Clock[A] = _reverseClock.asInstanceOf[Clock[A]]

@@ -85,18 +85,6 @@ You will always see your own writes. For example if you send two ``Update`` mess
 changing the value of the same ``key``, the ``modify`` function of the second message will
 see the change that was performed by the first ``Update`` message.
 
-The ``Update`` message also supports a read consistency level with same meaning as described for
-:ref:`replicator_get` below. If the given read consistency level is not ``ReadLocal`` it will first
-retrieve the data from other nodes and then apply the ``modify`` function with the latest data.
-If the read fails a ``Replicator.ReadFailure`` is replied to the sender of the ``Update``. In the
-case of ``ReadFailure`` the update is aborted and no data has been changed.
-To support "read your own writes" all incoming commands for this key will be
-buffered until the read is completed and the function has been applied.
-
-.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#read-update
-
-.. includecode:: code/docs/ddata/DistributedDataDocSpec.scala#read-update-response
-
 In the ``Update`` message you can pass an optional request context, which the ``Replicator``
 does not care about, but is included in the reply messages. This is a convenient
 way to pass contextual information (e.g. original sender) without having to use ``ask``
@@ -179,6 +167,29 @@ By combining ``WriteMajority`` and ``ReadMajority`` levels a read always reflect
 The ``Replicator`` writes and reads to a majority of replicas, i.e. **N / 2 + 1**. For example,
 in a 5 node cluster it writes to 3 nodes and reads from 3 nodes. In a 6 node cluster it writes 
 to 4 nodes and reads from 4 nodes.
+
+Here is an example of using ``WriteMajority`` and ``ReadMajority``:
+
+.. includecode:: ../../../akka-distributed-data/src/multi-jvm/scala/sample/distributeddata/ReplicatedShoppingCartSpec.scala#read-write-majority
+
+.. includecode:: ../../../akka-distributed-data/src/multi-jvm/scala/sample/distributeddata/ReplicatedShoppingCartSpec.scala#get-cart
+
+.. includecode:: ../../../akka-distributed-data/src/multi-jvm/scala/sample/distributeddata/ReplicatedShoppingCartSpec.scala#add-item
+
+In some rare cases, when performing an ``Update`` it is needed to first try to fetch latest data from
+other nodes. That can be done by first sending a ``Get`` with ``ReadMajority`` and then continue with
+the ``Update`` when the ``GetSuccess``, ``GetFailure`` or ``NotFound`` reply is received. This might be
+needed when you need to base a decision on latest information or when removing entries from ``ORSet`` 
+or ``ORMap``. If an entry is added to an ``ORSet`` or ``ORMap`` from one node and removed from another
+node the entry will only be removed if the added entry is visible on the node where the removal is
+performed (hence the name observed-removed set).
+
+The following example illustrates how to do that. It also illustrates how incoming commands
+are stashed to retain the order of the operations. The stashing is only needed if the order
+of the operations are important. In this case we do not want a subsequent ``AddItem`` to overtake
+a preceding ``RemoveItem``.
+
+.. includecode:: ../../../akka-distributed-data/src/multi-jvm/scala/sample/distributeddata/ReplicatedShoppingCartSpec.scala#remove-item 
 
 .. warning::
 

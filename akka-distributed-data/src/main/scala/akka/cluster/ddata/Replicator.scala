@@ -245,11 +245,11 @@ object Replicator {
   final case class Subscribe(key: String, subscriber: ActorRef) extends ReplicatorMessage
   /**
    * Unregister a subscriber.
-   * @see [[Subscribe]]
+   * @see [[Replicator.Subscribe]]
    */
   final case class Unsubscribe(key: String, subscriber: ActorRef) extends ReplicatorMessage
   /**
-   * @see [[Subscribe]]
+   * @see [[Replicator.Subscribe]]
    */
   final case class Changed(key: String, data: ReplicatedData) extends ReplicatorMessage
 
@@ -258,6 +258,7 @@ object Replicator {
     /**
      * Modify value of local `Replicator` and replicate with given `writeConsistency`.
      *
+     * The current value for the `key` is passed to the `modify` function.
      * If there is no current data value for the `key` the `initial` value will be
      * passed to the `modify` function.
      *
@@ -268,35 +269,7 @@ object Replicator {
     def apply[A <: ReplicatedData](
       key: String, initial: A, writeConsistency: WriteConsistency,
       request: Option[Any] = None)(modify: A ⇒ A): Update[A] =
-      Update(key, ReadLocal, writeConsistency, request)(modifyWithInitial(initial, modify))
-
-    /**
-     * Retrieve value from other replicas with given `readConsistency` and then modify value and
-     * replicate with given `writeConsistency`.
-     *
-     * If there is no current data value for the `key` the `initial` value will be
-     * passed to the `modify` function.
-     *
-     * The optional `request` context is included in the reply messages. This is a convenient
-     * way to pass contextual information (e.g. original sender) without having to use `ask`
-     * or local correlation data structures.
-     */
-    def apply[A <: ReplicatedData](
-      key: String, initial: A, readConsistency: ReadConsistency, writeConsistency: WriteConsistency,
-      request: Option[Any])(modify: A ⇒ A): Update[A] =
-      Update(key, readConsistency, writeConsistency, request)(modifyWithInitial(initial, modify))
-
-    /**
-     * Retrieve value from other replicas with given `readConsistency` and then modify value and
-     * replicate with given `writeConsistency`.
-     *
-     * If there is no current data value for the `key` the `initial` value will be
-     * passed to the `modify` function.
-     */
-    def apply[A <: ReplicatedData](
-      key: String, initial: A, readConsistency: ReadConsistency, writeConsistency: WriteConsistency)(
-        modify: A ⇒ A): Update[A] =
-      Update(key, readConsistency, writeConsistency, None)(modifyWithInitial(initial, modify))
+      Update(key, writeConsistency, request)(modifyWithInitial(initial, modify))
 
     private def modifyWithInitial[A <: ReplicatedData](initial: A, modify: A ⇒ A): Option[A] ⇒ A = {
       case Some(data) ⇒ modify(data)
@@ -318,46 +291,26 @@ object Replicator {
    * The `modify` function is called by the `Replicator` actor and must therefore be a pure
    * function that only uses the data parameter and stable fields from enclosing scope. It must
    * for example not access `sender()` reference of an enclosing actor.
-   *
-   * If `readConsistency != ReadLocal` it will first retrieve the data from other nodes
-   * and then apply the `modify` function with the latest data. If the read fails a
-   * [[Replicator.ReadFailure]] is replied to the sender of the `Update`. In the
-   * case of `ReadFailure` the update is aborted and no data has been changed.
-   * To support "read your own writes" all incoming commands for this key will be
-   * buffered until the read is completed and the `modify` function has been applied.
    */
-  final case class Update[A <: ReplicatedData](key: String, readConsistency: ReadConsistency, writeConsistency: WriteConsistency,
+  final case class Update[A <: ReplicatedData](key: String, writeConsistency: WriteConsistency,
                                                request: Option[Any])(val modify: Option[A] ⇒ A)
     extends Command with NoSerializationVerificationNeeded {
 
     /**
-     * Java API: Retrieve value from other replicas with given `readConsistency` and then modify value and
-     * replicate with given `writeConsistency`.
-     *
-     * If there is no current data value for the `key` the `initial` value will be
-     * passed to the `modify` function.
-     *
-     * The optional `request` context is included in the reply messages. This is a convenient
-     * way to pass contextual information (e.g. original sender) without having to use `ask`
-     * or local correlation data structures.
-     */
-    def this(key: String, readConsistency: ReadConsistency, writeConsistency: WriteConsistency,
-             request: Option[Any], modify: JFunction[Option[A], A]) =
-      this(key, readConsistency, writeConsistency, request)(data ⇒ modify.apply(data))
-
-    /**
      * Java API: Modify value of local `Replicator` and replicate with given `writeConsistency`.
      *
+     * The current value for the `key` is passed to the `modify` function.
      * If there is no current data value for the `key` the `initial` value will be
      * passed to the `modify` function.
      */
     def this(
       key: String, initial: A, writeConsistency: WriteConsistency, modify: JFunction[A, A]) =
-      this(key, ReadLocal, writeConsistency, None)(Update.modifyWithInitial(initial, data ⇒ modify.apply(data)))
+      this(key, writeConsistency, None)(Update.modifyWithInitial(initial, data ⇒ modify.apply(data)))
 
     /**
      * Java API: Modify value of local `Replicator` and replicate with given `writeConsistency`.
      *
+     * The current value for the `key` is passed to the `modify` function.
      * If there is no current data value for the `key` the `initial` value will be
      * passed to the `modify` function.
      *
@@ -366,25 +319,8 @@ object Replicator {
      * or local correlation data structures.
      */
     def this(
-      key: String, initial: A, writeConsistency: WriteConsistency,
-      request: Option[Any], modify: JFunction[A, A]) =
-      this(key, ReadLocal, writeConsistency, request)(Update.modifyWithInitial(initial, data ⇒ modify.apply(data)))
-
-    /**
-     * Java API: Retrieve value from other replicas with given `readConsistency` and then modify value and
-     * replicate with given `writeConsistency`.
-     *
-     * If there is no current data value for the `key` the `initial` value will be
-     * passed to the `modify` function.
-     *
-     * The optional `request` context is included in the reply messages. This is a convenient
-     * way to pass contextual information (e.g. original sender) without having to use `ask`
-     * or local correlation data structures.
-     */
-    def this(
-      key: String, initial: A, readConsistency: ReadConsistency, writeConsistency: WriteConsistency,
-      request: Option[Any], modify: JFunction[A, A]) =
-      this(key, readConsistency, writeConsistency, request)(Update.modifyWithInitial(initial, data ⇒ modify.apply(data)))
+      key: String, initial: A, writeConsistency: WriteConsistency, request: Option[Any], modify: JFunction[A, A]) =
+      this(key, writeConsistency, request)(Update.modifyWithInitial(initial, data ⇒ modify.apply(data)))
 
   }
 
@@ -406,11 +342,6 @@ object Replicator {
    * crashes before it has been able to communicate with other replicas.
    */
   final case class UpdateTimeout(key: String, request: Option[Any]) extends UpdateFailure
-  /**
-   * The [[Update]] could not fetch current value according to the given
-   * [[ReadConsistency readConsistency level]] and [[ReadConsistency#timeout timeout]].
-   */
-  final case class ReadFailure(key: String, request: Option[Any]) extends UpdateFailure
   /**
    * If the `modify` function of the [[Update]] throws an exception the reply message
    * will be this `ModifyFailure` message. The original exception is included as `cause`.
@@ -448,7 +379,7 @@ object Replicator {
   def getReplicaCount = GetReplicaCount
 
   /**
-   * @see [[GetReplicaCount]]
+   * @see [[Replicator.GetReplicaCount]]
    */
   final case class ReplicaCount(n: Int)
 
@@ -483,8 +414,6 @@ object Replicator {
     final case class ReadResult(envelope: Option[DataEnvelope]) extends ReplicatorMessage with DeadLetterSuppression
     final case class ReadRepair(key: String, envelope: DataEnvelope)
     case object ReadRepairAck
-    final case class BufferedCommand(cmd: Command, replyTo: ActorRef)
-    final case class UpdateInProgress(cmd: Update[ReplicatedData], replyTo: ActorRef)
 
     // Gossip Status message contains SHA-1 digests of the data to determine when
     // to send the full data
@@ -652,14 +581,6 @@ object Replicator {
  * changing the value of the same `key`, the `modify` function of the second message will
  * see the change that was performed by the first `Update` message.
  *
- * The `Update` message also supports a read consistency level with same meaning as described for
- * `Get` below. If the given read consistency level is not `ReadLocal` it will first retrieve the
- * data from other nodes and then apply the `modify` function with the latest data.
- * If the read fails a [[Replicator.ReadFailure]] is replied to the sender of the `Update`. In the
- * case of `ReadFailure` the update is aborted and no data has been changed.
- * To support "read your own writes" all incoming commands for this key will be
- * buffered until the read is completed and the function has been applied.
- *
  * In the `Update` message you can pass an optional request context, which the `Replicator`
  * does not care about, but is included in the reply messages. This is a convenient
  * way to pass contextual information (e.g. original sender) without having to use `ask`
@@ -810,8 +731,6 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
   val subscribers = new mutable.HashMap[String, mutable.Set[ActorRef]] with mutable.MultiMap[String, ActorRef]
   val newSubscribers = new mutable.HashMap[String, mutable.Set[ActorRef]] with mutable.MultiMap[String, ActorRef]
 
-  var updateInProgressBuffer = Map.empty[String, Queue[BufferedCommand]]
-
   override def preStart(): Unit = {
     val leaderChangedClass = if (role.isDefined) classOf[RoleLeaderChanged] else classOf[LeaderChanged]
     cluster.subscribe(self, initialStateMode = InitialStateAsEvents,
@@ -831,8 +750,8 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
   def receive = normalReceive
 
   val normalReceive: Receive = {
-    case Get(key, consistency, req)             ⇒ receiveGet(key, consistency, req, sender())
-    case u @ Update(key, readC, writeC, req)    ⇒ receiveUpdate(key, u.modify, readC, writeC, req, sender())
+    case Get(key, consistency, req)             ⇒ receiveGet(key, consistency, req)
+    case u @ Update(key, writeC, req)           ⇒ receiveUpdate(key, u.modify, writeC, req)
     case Read(key)                              ⇒ receiveRead(key)
     case Write(key, envelope)                   ⇒ receiveWrite(key, envelope)
     case ReadRepair(key, envelope)              ⇒ receiveReadRepair(key, envelope)
@@ -852,13 +771,12 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
     case LeaderChanged(leader)                  ⇒ receiveLeaderChanged(leader, None)
     case RoleLeaderChanged(role, leader)        ⇒ receiveLeaderChanged(leader, Some(role))
     case GetKeys                                ⇒ receiveGetKeys()
-    case Delete(key, consistency)               ⇒ receiveDelete(key, consistency, sender())
+    case Delete(key, consistency)               ⇒ receiveDelete(key, consistency)
     case RemovedNodePruningTick                 ⇒ receiveRemovedNodePruningTick()
     case GetReplicaCount                        ⇒ receiveGetReplicaCount()
   }
 
-  def receiveGet(key: String, consistency: ReadConsistency, req: Option[Any], replyTo: ActorRef): Unit = {
-    // don't use sender() in this method, since it is used from drainUpdateInProgressBuffer
+  def receiveGet(key: String, consistency: ReadConsistency, req: Option[Any]): Unit = {
     val localValue = getData(key)
     log.debug("Received Get for key [{}], local data [{}]", key, localValue)
     if (isLocalGet(consistency)) {
@@ -867,9 +785,9 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
         case Some(DataEnvelope(data, _))        ⇒ GetSuccess(key, data, req)
         case None                               ⇒ NotFound(key, req)
       }
-      replyTo ! reply
+      sender() ! reply
     } else
-      context.actorOf(ReadAggregator.props(key, consistency, req, nodes, localValue, replyTo)
+      context.actorOf(ReadAggregator.props(key, consistency, req, nodes, localValue, sender())
         .withDispatcher(context.props.dispatcher))
   }
 
@@ -887,49 +805,30 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
   def isLocalSender(): Boolean = !sender().path.address.hasGlobalScope
 
   def receiveUpdate(key: String, modify: Option[ReplicatedData] ⇒ ReplicatedData,
-                    readConsistency: ReadConsistency, writeConsistency: WriteConsistency,
-                    req: Option[Any], replyTo: ActorRef): Unit = {
-    // don't use sender() in this method, since it is used from drainUpdateInProgressBuffer
+                    writeConsistency: WriteConsistency, req: Option[Any]): Unit = {
     val localValue = getData(key)
-    if (readConsistency == ReadLocal) {
-      Try {
-        localValue match {
-          case Some(DataEnvelope(DeletedData, _))         ⇒ throw new DataDeleted(key)
-          case Some(envelope @ DataEnvelope(existing, _)) ⇒ modify(Some(existing))
-          case None                                       ⇒ modify(None)
-        }
-      } match {
-        case Success(newData) ⇒
-          log.debug("Received Update for key [{}], old data [{}], new data [{}]", key, localValue, newData)
-          val envelope = DataEnvelope(pruningCleanupTombstoned(newData))
-          setData(key, envelope)
-          if (isLocalUpdate(writeConsistency))
-            replyTo ! UpdateSuccess(key, req)
-          else
-            context.actorOf(WriteAggregator.props(key, envelope, writeConsistency, req, nodes, replyTo)
-              .withDispatcher(context.props.dispatcher))
-        case Failure(e: DataDeleted) ⇒
-          log.debug("Received Update for deleted key [{}]", key)
-          replyTo ! e
-        case Failure(e) ⇒
-          log.debug("Received Update for key [{}], failed: {}", key, e.getMessage)
-          replyTo ! ModifyFailure(key, "Update failed: " + e.getMessage, e, req)
+    Try {
+      localValue match {
+        case Some(DataEnvelope(DeletedData, _))         ⇒ throw new DataDeleted(key)
+        case Some(envelope @ DataEnvelope(existing, _)) ⇒ modify(Some(existing))
+        case None                                       ⇒ modify(None)
       }
-    } else {
-      // Update with readConsistency != ReadLocal means that we will first retrieve the data with
-      // ReadAggregator (same as is used for Get). To support "read your own writes" all incoming
-      // commands for this key will be buffered while the read is in progress. When the read is
-      // completed the update will continue, operating on the retrieved data, and replicate the
-      // new value with the writeConsistency. Buffered commands are also processed when the read
-      // is completed.
-      log.debug("Received Update for key [{}], with readConsistency [{}]", key, readConsistency)
-      val req2 = Some(UpdateInProgress(Update(key, readConsistency, writeConsistency, req)(modify), replyTo))
-      context.actorOf(ReadAggregator.props(key, readConsistency, req2, nodes, localValue, self)
-        .withDispatcher(context.props.dispatcher))
-      if (updateInProgressBuffer.isEmpty)
-        context.become(updateInProgressReceive)
-      if (!updateInProgressBuffer.contains(key))
-        updateInProgressBuffer = updateInProgressBuffer.updated(key, Queue.empty)
+    } match {
+      case Success(newData) ⇒
+        log.debug("Received Update for key [{}], old data [{}], new data [{}]", key, localValue, newData)
+        val envelope = DataEnvelope(pruningCleanupTombstoned(newData))
+        setData(key, envelope)
+        if (isLocalUpdate(writeConsistency))
+          sender() ! UpdateSuccess(key, req)
+        else
+          context.actorOf(WriteAggregator.props(key, envelope, writeConsistency, req, nodes, sender())
+            .withDispatcher(context.props.dispatcher))
+      case Failure(e: DataDeleted) ⇒
+        log.debug("Received Update for deleted key [{}]", key)
+        sender() ! e
+      case Failure(e) ⇒
+        log.debug("Received Update for key [{}], failed: {}", key, e.getMessage)
+        sender() ! ModifyFailure(key, "Update failed: " + e.getMessage, e, req)
     }
   }
 
@@ -939,63 +838,6 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
       case _: WriteMajority | _: WriteAll ⇒ nodes.isEmpty
       case _                              ⇒ false
     }
-
-  val updateInProgressReceive: Receive = ({
-    case cmd: Command if updateInProgressBuffer.contains(cmd.key) ⇒
-      log.debug("Update in progress for [{}], buffering [{}]", cmd.key, cmd)
-      updateInProgressBuffer = updateInProgressBuffer.updated(cmd.key,
-        updateInProgressBuffer(cmd.key).enqueue(BufferedCommand(cmd, sender())))
-    case getResponse: GetResponse ⇒ getResponse match {
-      case GetSuccess(key, _, Some(UpdateInProgress(u @ Update(_, _, writeC, req), replyTo: ActorRef))) ⇒
-        // local value has been updated by the read-repair
-        continueUpdateAfterRead(key, u.modify, writeC, req, replyTo)
-      case NotFound(key, Some(UpdateInProgress(u @ Update(_, _, writeC, req), replyTo: ActorRef))) ⇒
-        continueUpdateAfterRead(key, u.modify, writeC, req, replyTo)
-      case GetFailure(key, Some(UpdateInProgress(u @ Update(_, readC, writeC, req), replyTo: ActorRef))) ⇒
-        log.debug("Update [{}] with readConsistency [{}] failed, update aborted", key, readC)
-        replyTo ! ReadFailure(key, req)
-        drainUpdateInProgressBuffer(key)
-      case other ⇒
-        log.error("Unexpected reply [{}]", other)
-        unhandled(other)
-        drainUpdateInProgressBuffer(getResponse.key)
-    }
-  }: Receive).orElse[Any, Unit](normalReceive)
-
-  def continueUpdateAfterRead(key: String, modify: Option[ReplicatedData] ⇒ ReplicatedData,
-                              writeConsistency: WriteConsistency,
-                              req: Option[Any], replyTo: ActorRef): Unit = {
-    log.debug("Continue update of [{}] after read", key)
-    receiveUpdate(key, modify, ReadLocal, writeConsistency, req, replyTo)
-    drainUpdateInProgressBuffer(key)
-  }
-
-  def drainUpdateInProgressBuffer(key: String): Unit = {
-    @tailrec def drain(): Unit = {
-      val (cmd, remaining) = updateInProgressBuffer(key).dequeue
-      if (remaining.isEmpty)
-        updateInProgressBuffer -= key
-      else
-        updateInProgressBuffer = updateInProgressBuffer.updated(key, remaining)
-      val cont = cmd match {
-        case BufferedCommand(Get(_, consistency, req), replyTo) ⇒
-          receiveGet(key, consistency, req, replyTo)
-          true
-        case BufferedCommand(u @ Update(_, readC, writeC, req), replyTo) ⇒
-          receiveUpdate(key, u.modify, readC, writeC, req, replyTo)
-          (readC == ReadLocal)
-        case BufferedCommand(Delete(_, consistency), replyTo) ⇒
-          receiveDelete(key, consistency, replyTo)
-          true
-      }
-      if (cont && remaining.nonEmpty) drain()
-    }
-
-    if (updateInProgressBuffer(key).nonEmpty) drain()
-    else updateInProgressBuffer -= key
-
-    if (updateInProgressBuffer.isEmpty) context.become(normalReceive)
-  }
 
   def receiveWrite(key: String, envelope: DataEnvelope): Unit = {
     write(key, envelope)
@@ -1029,18 +871,17 @@ final class Replicator(settings: ReplicatorSettings) extends Actor with ActorLog
     sender() ! GetKeysResult(keys)
   }
 
-  def receiveDelete(key: String, consistency: WriteConsistency, replyTo: ActorRef): Unit = {
-    // don't use sender() in this method, since it is used from drainUpdateInProgressBuffer
+  def receiveDelete(key: String, consistency: WriteConsistency): Unit = {
     getData(key) match {
       case Some(DataEnvelope(DeletedData, _)) ⇒
         // already deleted
-        replyTo ! DataDeleted(key)
+        sender() ! DataDeleted(key)
       case _ ⇒
         setData(key, DeletedEnvelope)
         if (isLocalUpdate(consistency))
-          replyTo ! DeleteSuccess(key)
+          sender() ! DeleteSuccess(key)
         else
-          context.actorOf(WriteAggregator.props(key, DeletedEnvelope, consistency, None, nodes, replyTo)
+          context.actorOf(WriteAggregator.props(key, DeletedEnvelope, consistency, None, nodes, sender())
             .withDispatcher(context.props.dispatcher))
     }
   }

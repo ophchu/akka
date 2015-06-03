@@ -135,43 +135,6 @@ class DistributedDataDocSpec extends AkkaSpec("""
     }
   }
 
-  "demonstrate update with read consistency level" in {
-    val probe = TestProbe()
-    implicit val self = probe.ref
-
-    //#read-update
-    implicit val cluster = Cluster(system)
-    val replicator = DistributedData(system).replicator
-
-    val readMajority = ReadMajority(timeout = 2.seconds)
-    val writeMajority = WriteMajority(timeout = 3.seconds)
-    val newElement = "a345"
-    val update =
-      Update("set3", ORSet.empty[String], readMajority, writeMajority) { currentSet =>
-        if (currentSet.size >= 10) {
-          val removeElements =
-            currentSet.elements.toSeq.sorted.take(currentSet.size - 9)
-          val setWith9Elements =
-            removeElements.foldLeft(currentSet) { (s, elem) => s - elem }
-          setWith9Elements + newElement
-        } else
-          currentSet + newElement
-      }
-    replicator ! update
-    //#read-update
-
-    probe.expectMsgType[UpdateResponse] match {
-      //#read-update-response
-      case UpdateSuccess("set3", req) => // ok
-      case ReadFailure("set3", req)   =>
-      // read from majority falied within 2.seconds
-      case UpdateTimeout("set3", req) =>
-      // write to majority failed within 3.seconds
-      //#read-update-response
-      case unexpected                 => fail("Unexpected response: " + unexpected)
-    }
-  }
-
   "demonstrate update with request context" in {
     import Actor.Receive
     val probe = TestProbe()
@@ -272,7 +235,7 @@ class DistributedDataDocSpec extends AkkaSpec("""
     val replicator = DistributedData(system).replicator
     // subscribe to changes of the "counter1" value
     replicator ! Subscribe("counter1", self)
-    var currentValue = 0L
+    var currentValue = BigInt(0)
 
     def receive: Receive = {
       case Changed("counter1", PNCounter(value)) =>
@@ -386,7 +349,7 @@ class DistributedDataDocSpec extends AkkaSpec("""
 
     implicit val cluster = Cluster(system)
     implicit val recordClock = new LWWRegister.Clock[Record] {
-      override def nextTimestamp(currentTimestamp: Long, value: Record): Long =
+      override def apply(currentTimestamp: Long, value: Record): Long =
         value.version
     }
 

@@ -391,7 +391,9 @@ class ReplicatorSpec extends MultiNodeSpec(ReplicatorSpec) with STMultiNodeSpec 
       // ReadMajority should retrive the previous update from second, before applying the modification
       val probe1 = TestProbe()
       val probe2 = TestProbe()
-      replicator.tell(Update("E", GCounter(), readMajority, writeMajority, None) { data ⇒
+      replicator.tell(Get("E", readMajority), probe2.ref)
+      probe2.expectMsgType[GetSuccess]
+      replicator.tell(Update("E", GCounter(), writeMajority, None) { data ⇒
         probe1.ref ! data.value
         data + 1
       }, probe2.ref)
@@ -408,13 +410,15 @@ class ReplicatorSpec extends MultiNodeSpec(ReplicatorSpec) with STMultiNodeSpec 
 
     runOn(second) {
       val probe1 = TestProbe()
-      replicator.tell(Update("E", GCounter(), readMajority, writeMajority, Some(153))(_ + 1), probe1.ref)
+      replicator.tell(Get("E", readMajority), probe1.ref)
+      probe1.expectMsgType[GetSuccess]
+      replicator.tell(Update("E", GCounter(), writeMajority, Some(153))(_ + 1), probe1.ref)
       // verify read your own writes, without waiting for the UpdateSuccess reply
       // note that the order of the replies are not defined, and therefore we use separate probes
       val probe2 = TestProbe()
-      replicator.tell(Update("E", GCounter(), ReadLocal, writeMajority, Some(154))(_ + 1), probe2.ref)
+      replicator.tell(Update("E", GCounter(), writeMajority, Some(154))(_ + 1), probe2.ref)
       val probe3 = TestProbe()
-      replicator.tell(Update("E", GCounter(), readMajority, writeMajority, Some(155))(_ + 1), probe3.ref)
+      replicator.tell(Update("E", GCounter(), writeMajority, Some(155))(_ + 1), probe3.ref)
       val probe5 = TestProbe()
       replicator.tell(Get("E", readMajority), probe5.ref)
       probe1.expectMsg(UpdateSuccess("E", Some(153)))
@@ -426,8 +430,8 @@ class ReplicatorSpec extends MultiNodeSpec(ReplicatorSpec) with STMultiNodeSpec 
     enterBarrier("majority-update-from-second")
 
     runOn(first, second) {
-      replicator ! Update("E2", GCounter(), readAll, writeAll, Some(999))(_ + 1)
-      expectMsg(ReadFailure("E2", Some(999)))
+      replicator ! Get("E2", readAll, Some(998))
+      expectMsg(GetFailure("E2", Some(998)))
       replicator ! Get("E2", ReadLocal)
       expectMsg(NotFound("E2", None))
     }
