@@ -1,5 +1,7 @@
 # Akka
 
+[![Join the chat at https://gitter.im/ophchu/akka](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/ophchu/akka?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 We believe that writing correct concurrent & distributed, resilient and elastic applications is too hard. Most of the time it's because we are using the wrong tools and the wrong level of abstraction.
 
 Akka is here to change that.
